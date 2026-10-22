@@ -1,0 +1,2 @@
+import {Link} from "@tanstack/react-router";
+export default function CrmImportDialog({open,onClose}: {open:boolean;onClose:()=>void;onContinue?:(...args:any[])=>void;target?:string}) {if(!open)return null;return <div role="dialog" aria-label="Connected import"><p>Select your app, inspect its import action and run it in Connections.</p><Link to="/app/integrations" onClick={onClose}>Open Connections</Link><button onClick={onClose}>Close</button></div>;}

@@ -1,0 +1,3 @@
+import {useUserProfile} from "@/hooks/context/user";
+import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from "@/components/ui/dialog";
+export default function AddEmailModal(){const user=useUserProfile();return <Dialog open={user.addEmail} onOpenChange={user.setAddEmail}><DialogContent><DialogHeader><DialogTitle>Connect a mailbox</DialogTitle><DialogDescription>Create a mailbox or connect one you own through Pramaan.</DialogDescription></DialogHeader><a className="btn" href="/app/integrations" onClick={()=>user.setAddEmail(false)}>Open Connections</a></DialogContent></Dialog>;}

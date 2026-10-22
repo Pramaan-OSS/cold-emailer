@@ -1,0 +1,28 @@
+[Unit]
+Description=ColdEmail realtime service (Phoenix websocket fanout)
+Documentation=https://example.test/development/bare-metal/
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coldemail
+Group=coldemail
+EnvironmentFile=/etc/coldemail/coldemail.env
+# A mix release only starts its HTTP listener when PHX_SERVER is set.
+Environment=PHX_SERVER=true
+Environment=HOME=/var/lib/coldemail
+WorkingDirectory=/opt/coldemail/realtime
+ExecStart=/opt/coldemail/realtime/bin/realtime start
+ExecStop=/opt/coldemail/realtime/bin/realtime stop
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/coldemail
+
+[Install]
+WantedBy=multi-user.target

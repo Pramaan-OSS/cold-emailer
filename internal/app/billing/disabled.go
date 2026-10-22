@@ -1,0 +1,82 @@
+package billing
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"github.com/pramaan-oss/cold-email/internal/errx"
+)
+
+// disabledService is the BillingService used when BILLING_PROVIDER=none (the
+// self-host default). It lets the backend boot and wire the credit/referral
+// hooks without any Billing keys: the customer-facing billing calls return a
+// clean "billing disabled" error, the webhook verify rejects, and the Wire*
+// hooks are no-ops. Feature access does not depend on this — the feature gate
+// unlocks everything in self-host mode.
+type disabledService struct{}
+
+// NewDisabledService returns a no-op BillingService for billing-disabled installs.
+func NewDisabledService() BillingService { return &disabledService{} }
+
+func billingDisabled() *errx.Error {
+	return errx.New(errx.ServiceUnavailable, "billing is disabled on this self-hosted instance")
+}
+
+func (d *disabledService) CreateCustomer(_ context.Context, _ uuid.UUID, _, _ string) (string, *errx.Error) {
+	return "", billingDisabled()
+}
+
+func (d *disabledService) GetCustomer(_ context.Context, _ string) (*Customer, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) CreateCheckoutSession(_ context.Context, _, _ uuid.UUID, _, _, _, _ string) (*CheckoutSession, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) CreatePortalSession(_ context.Context, _, _ string) (string, *errx.Error) {
+	return "", billingDisabled()
+}
+
+func (d *disabledService) GetSubscription(_ context.Context, _ string) (*Subscription, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) CancelSubscription(_ context.Context, _ string, _ bool) *errx.Error {
+	return billingDisabled()
+}
+
+func (d *disabledService) ChangePlan(_ context.Context, _, _ uuid.UUID, _, _, _ string) (*Subscription, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) PreviewPlanChange(_ context.Context, _, _ uuid.UUID) (*ProrationPreview, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) VerifyWebhook(_ []byte, _ string) (*Event, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) ProcessWebhookEvent(_ context.Context, _ *Event) *errx.Error {
+	return nil
+}
+
+func (d *disabledService) ApplyCustomerCredit(_ context.Context, _ string, _ int64, _, _ string) (string, *errx.Error) {
+	return "", billingDisabled()
+}
+
+func (d *disabledService) CreateCreditCheckoutSession(_ context.Context, _, _ uuid.UUID, _ string, _ int, _, _ string) (*CheckoutSession, *errx.Error) {
+	return nil, billingDisabled()
+}
+
+func (d *disabledService) AutoTopUpCredits(_ context.Context, _ uuid.UUID, _ string, _ int) (bool, error) {
+	return false, nil
+}
+
+func (d *disabledService) WireReferral(_ ReferralRewarder) {}
+
+func (d *disabledService) WireAnalytics(_ ProductAnalytics) {}
+
+func (d *disabledService) WireCredits(_ CreditGranter, _ AuditLogger) {}

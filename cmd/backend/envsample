@@ -1,0 +1,54 @@
+# DATABASES / SERVICES
+PRIMARY_DB="postgresql://username:password@localhost:5433/database"
+REDIS="redis://arbitrary_usrname:password@ipaddress:6379/0"
+KAFKA="amqp://username:password@ip:port/vhost"
+GEO_DB_PATH="./database.mmdb"
+
+# NoSQL Cassandra Database (Datastax Astra)
+ASTRA_DB_ID=""
+ASTRA_DB_REGION=""
+ASTRA_KEYSPACE_NAME=""
+ASTRA_APPLICATION_TOKEN=""
+
+# Authentication
+SOCIAL_BROWSER_CLIENT_ID=""
+SOCIAL_BROWSER_CLIENT_SECRET=""
+SOCIAL_BROWSER_REDIRECT_URI=""
+
+SOCIAL_DEVICE_APP_ID=""
+SOCIAL_DEVICE_TEAM_ID=""
+SOCIAL_DEVICE_KEY_ID=""
+SOCIAL_DEVICE_KEY_SECRET=""
+SOCIAL_DEVICE_REDIRECT_URI=""
+
+# Config
+NOTIFY_NAME="ColdEmail Notifications"
+NOTIFY_ADDRESS="noreply@example.test"
+TRACKING_DOMAIN="track.example.com"
+WEBSOCKET_URL="ws://localhost:4000"
+
+# Api 
+PORT=8080
+GIN_MODE=release
+OPEN_API=true
+
+# it or instead of it. All optional: unset means errors are logged locally.
+
+# SECRETS
+# At least 32 characters: it signs every session token and the backend now
+# refuses to start below that. Generate one with: make gen-key
+AUTH_SECRET="replace-me-with-at-least-32-random-characters"
+
+# Passkeys (WebAuthn). Optional — derived from APP_URL / CORS_ALLOW_ORIGINS
+# when unset (and localhost for local dev). Override for self-hosting:
+#   WEBAUTHN_RP_ID is the bare host (no scheme/port) passkeys bind to.
+#   WEBAUTHN_RP_ORIGINS is a CSV of full origins allowed to run ceremonies.
+# Changing the RP ID invalidates every enrolled passkey — keep it stable.
+# WEBAUTHN_RP_ID="example.test"
+# WEBAUTHN_RP_ORIGINS="https://example.test"
+# WEBAUTHN_RP_DISPLAY_NAME="ColdEmail"
+
+# Amazon AWS
+AWS_ACCESS_KEY_ID=AKIAxxxxxxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxx
+AWS_DEFAULT_REGION=eu-north-1

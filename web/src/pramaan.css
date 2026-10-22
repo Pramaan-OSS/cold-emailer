@@ -1,0 +1,85 @@
+/* Approved glass system. Colour values live in tokens.css. */
+:root { --background:var(--bg); --foreground:var(--fg); --card:var(--glass); --card-foreground:var(--fg); --popover:var(--glass-strong); --popover-foreground:var(--fg); --primary:var(--inverse); --primary-foreground:var(--on-inverse); --secondary:var(--surface-sunk); --secondary-foreground:var(--fg); --muted:var(--surface-sunk); --muted-foreground:var(--fg-2); --accent:var(--surface-sunk); --accent-foreground:var(--fg); --border:var(--line); --input:var(--line); --ring:var(--thread); --radius:12px; }
+html,body,#root { min-height:100%; font-family:var(--sans); color:var(--fg); background:var(--bg); }
+h1,h2,h3 { font-family:var(--serif); font-weight:400!important; letter-spacing:-.02em; text-wrap:balance; font-variation-settings:"opsz" 48,"SOFT" 30; }
+code,pre,.font-mono { font-family:var(--mono); }
+.ce-shell { position:fixed; inset:0; padding:12px; display:flex; flex-direction:column; gap:12px; background:radial-gradient(ellipse at 5% 15%,var(--blob-dark),transparent 60%),radial-gradient(ellipse at 85% 20%,var(--blob-light),transparent 60%),var(--bg); }
+.top,.left,.right { background:var(--glass); backdrop-filter:blur(20px) saturate(1.1); border:1px solid var(--glass-edge); box-shadow:var(--glass-shadow); border-radius:24px; overflow:hidden; }
+.top { height:56px; flex:none; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:20px; align-items:center; padding:0 16px 0 24px; }
+.brand { display:flex; align-items:center; gap:10px; font-family:var(--serif); font-size:21px; font-weight:400; white-space:nowrap; }
+.ce-main { flex:1; min-height:0; display:grid; grid-template-columns:min(400px,36%) minmax(0,1fr); gap:12px; }
+.left,.right { display:flex; flex-direction:column; min-width:0; min-height:0; }
+.strip { padding:12px 20px; border-bottom:1px solid var(--line-soft); font-size:11px; color:var(--fg-3); }
+.agent-embedded { display:flex; position:relative; flex:1; min-height:0; width:100%; background:transparent; transform:none!important; }
+.agent-embedded > div { min-width:0; width:100%; }
+.agent-embedded [style*="overflow"],.agent-embedded textarea { overflow:hidden; }
+.msgs,.view { overflow:auto; min-height:0; flex:1; }
+.view { padding:28px; }
+.tabs { display:flex; flex-wrap:wrap; gap:16px; padding:16px 28px 0; border-bottom:1px solid var(--line-soft); }
+.tab { padding:0 0 12px; font-size:13px; color:var(--fg-2); }
+.tab[aria-current="page"] { color:var(--fg); border-bottom:2px solid var(--fg); }
+.btn,button[data-slot="button"] { border-radius:9999px; background:var(--btn-glass); border:1px solid var(--btn-edge); box-shadow:var(--btn-shadow); color:var(--fg); }
+.btn { padding:7px 13px; font-size:12px; }
+button:hover,.btn:hover { background:var(--btn-glass-hover); }
+input:not([type="checkbox"]):not([type="radio"]),select,textarea { border-radius:12px; background:var(--glass-strong); border-color:var(--line); color:var(--fg); }
+textarea { overflow:hidden; }
+:focus-visible { outline:2px solid var(--thread); outline-offset:3px; }
+.right button { color:var(--fg); background:var(--btn-glass); }
+.right [class*="overflow-auto"],.right [class*="overflow-y-auto"] { overflow:visible; }
+[class*="bg-sky-"],[class*="bg-blue-"],[class*="bg-slate-"],[class*="bg-white"],[class*="bg-gray-"] { background-color:var(--surface-sunk); }
+[class*="text-sky-"],[class*="text-blue-"],[class*="text-slate-"],[class*="text-gray-"] { color:var(--fg-2); }
+[class*="border-slate-"],[class*="border-gray-"] { border-color:var(--line); }
+[class*="shadow-"] { box-shadow:var(--card-shadow); }
+@media(max-width:650px) { .ce-shell { position:relative; min-height:100dvh; padding:8px; } .ce-main { grid-template-columns:minmax(0,1fr); } .left { min-height:320px; max-height:45dvh; } .right { min-height:50dvh; } .top { padding:0 12px; gap:8px; } .top .crumb { min-width:0; } .brand { font-size:13px; } .view { padding:18px; } .tabs { padding:14px 18px 0; gap:12px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+
+:root {--destructive:var(--fg);--sidebar:var(--glass);--sidebar-foreground:var(--fg);--sidebar-primary:var(--inverse);--sidebar-primary-foreground:var(--on-inverse);--sidebar-accent:var(--surface-sunk);--sidebar-accent-foreground:var(--fg);--sidebar-border:var(--line);--sidebar-ring:var(--focus);}
+
+[class*="bg-emerald-"],[class*="bg-rose-"],[class*="bg-amber-"],[class*="bg-red-"],[class*="bg-green-"],[class*="bg-indigo-"] {background-color:var(--surface-sunk)}
+[class*="text-emerald-"],[class*="text-rose-"],[class*="text-amber-"],[class*="text-red-"],[class*="text-green-"],[class*="text-indigo-"] {color:var(--fg-2)}
+
+[class*="text-white"] {color:var(--fg)}
+.bg-black {background-color:var(--inverse)}
+.bg-black.text-white {color:var(--on-inverse)}
+.view {padding:24px 28px 40px;align-content:start}
+.capabilities-view {display:grid;gap:20px;min-width:0;align-content:start;font-size:13px;line-height:1.5}
+.capabilities-view h1 {font-size:28px;line-height:1.2;margin:0}
+.capabilities-view h2 {font-size:17px;line-height:1.2;margin:0 0 12px}
+.capabilities-view p {margin:8px 0;color:var(--fg-2)}
+.capabilities-view .card {min-width:0;padding:20px;border:1px solid var(--card-edge);border-radius:16px;background:linear-gradient(var(--card-top),var(--card-bottom));box-shadow:var(--card-shadow)}
+.capabilities-view .field {display:flex;flex-direction:column;gap:8px;margin:12px 0;color:var(--fg-2);font-size:12px}
+.capabilities-view .in {width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--glass-strong);color:var(--fg)}
+.capabilities-view button {margin:4px 6px 4px 0}
+.capabilities-view button:disabled {color:var(--fg-3);opacity:.6;cursor:not-allowed}
+.capabilities-view .tile {padding:12px;margin:8px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface-sunk)}
+.capabilities-view .state {display:flex;align-items:center;gap:12px;font-size:12px}
+.pin {display:inline-flex;align-items:center;gap:6px;font-size:11px;border-radius:9999px;white-space:nowrap;color:var(--fg-2)}
+.pin i {width:6px;height:6px;border-radius:9999px;background:currentColor}
+.capabilities-view pre,.capabilities-view td {white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.capabilities-view table {width:100%;font-size:12px}
+.capabilities-view th,.capabilities-view td {padding:8px;text-align:left;border-bottom:1px solid var(--line-soft)}
+.left [role="tablist"] {overflow-y:hidden}
+
+.crumb {display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;color:var(--fg-3)}
+.crumb>button {min-width:0;flex:1}
+@media(max-width:650px){.crumb>a,.crumb>.sep{display:none}}
+
+/* Domain setup uses the same glass and form tokens as Connections. */
+.domain-purchase {min-width:0;flex-shrink:0;margin:20px;padding:20px;border:1px solid var(--card-edge);border-radius:16px;background:linear-gradient(var(--card-top),var(--card-bottom));box-shadow:var(--card-shadow);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.domain-purchase p {margin:8px 0;color:var(--fg-2)}
+.domain-purchase .field {display:flex;flex-direction:column;gap:8px;margin:12px 0;color:var(--fg-2);font-size:12px;min-width:0}
+.domain-purchase .in {width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--glass-strong);color:var(--fg)}
+.domain-purchase button {margin:4px 6px 4px 0;white-space:normal}
+.domain-purchase button:disabled {color:var(--fg-3);opacity:.6;cursor:not-allowed}
+.domain-purchase .domain-choice {display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;min-width:0}
+.domain-purchase .domain-choice span {flex:1 1 100%;overflow-wrap:anywhere}
+@media(max-width:650px){.domain-purchase {margin:12px 0;padding:16px}}
+
+/* Organisation sign-in uses the existing glass form tokens. */
+.enterprise-sign-in,.enterprise-login {min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.enterprise-sign-in p,.enterprise-login p {margin:8px 0;color:var(--fg-2)}
+.enterprise-sign-in .field,.enterprise-login .field {display:flex;flex-direction:column;gap:8px;margin:12px 0;min-width:0;color:var(--fg-2);font-size:12px}
+.enterprise-sign-in .in,.enterprise-login .in {width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--glass-strong);color:var(--fg)}
+.enterprise-sign-in .card {min-width:0;padding:16px;border:1px solid var(--card-edge);border-radius:16px;background:linear-gradient(var(--card-top),var(--card-bottom));box-shadow:var(--card-shadow)}
+.enterprise-sign-in button,.enterprise-login button {margin:4px 6px 4px 0;white-space:normal}
+.enterprise-sign-in button:disabled,.enterprise-login button:disabled {color:var(--fg-3);opacity:.6;cursor:not-allowed}

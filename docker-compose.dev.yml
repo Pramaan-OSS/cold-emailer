@@ -1,0 +1,184 @@
+# Local stack: make start generates the private .env values before Compose runs.
+x-runtime: &runtime
+  APP_ENV: dev
+  PRIMARY_DB: ${PRIMARY_DB:-postgres://coldemail:${POSTGRES_PASSWORD:?Run make start}@postgres:5432/coldemail_dev?sslmode=disable}
+  PRIMARY_DB_DIRECT: ${PRIMARY_DB_DIRECT:-}
+  PRAMAAN_MANAGED_AUTH_URL: ${PRAMAAN_MANAGED_AUTH_URL:-}
+  PRAMAAN_MANAGED_JWKS_URL: ${PRAMAAN_MANAGED_JWKS_URL:-}
+  PRAMAAN_MANAGED_APP_ORIGIN: ${PRAMAAN_MANAGED_APP_ORIGIN:-}
+  REDIS: redis://redis:6379
+  EVENTBUS_PROVIDER: nats
+  NATS_URL: nats://nats:4222
+  NATS_MAX_BYTES: 256MiB
+  CODEC_PROVIDER: json
+  KMS_PROVIDER: local
+  KMS_LOCAL_MASTER_KEY: ${KMS_LOCAL_MASTER_KEY:?Run make start}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?Run make start}
+  AUTH_SECRET: ${AUTH_SECRET:?Run make start}
+  INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Run make start}
+  BLOB_PROVIDER: filesystem
+  BLOB_FS_ROOT: /data/blobs
+  TASKS_PROVIDER: local
+  BILLING_PROVIDER: none
+  CAPTCHA_PROVIDER: none
+  MAIL_TRANSPORT: log
+  EMAIL_NAME: Cold Email
+  EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
+  PRAMAAN_API_KEY: ${PRAMAAN_API_KEY:-}
+  PRAMAAN_BASE_URL: ${PRAMAAN_BASE_URL:-https://api.pramaan.dev}
+
+x-go: &go
+  build:
+    context: .
+    dockerfile: deploy/docker/local.Dockerfile
+  image: cold-email/local:dev
+  restart: unless-stopped
+  volumes:
+    - blobs:/data/blobs
+
+services:
+  provision:
+    <<: *go
+    profiles: [setup]
+    restart: "no"
+    user: "${COLD_EMAIL_LOCAL_UID:-1000}:${COLD_EMAIL_LOCAL_GID:-1000}"
+    volumes: [./.runtime:/runtime]
+    environment:
+      PRAMAAN_API_KEY: ${PRAMAAN_API_KEY:-}
+      PRAMAAN_BASE_URL: ${PRAMAAN_BASE_URL:-https://api.pramaan.dev}
+      PRAMAAN_MANAGED_STATE: /runtime
+      PRAMAAN_SCHEMA_CHECKER: /usr/local/bin/schema-check
+      PRAMAAN_FAKE: ${PRAMAAN_FAKE:-}
+      APP_URL: ${APP_URL:-http://localhost:5173}
+    command: [sh, scripts/provision-local.sh]
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coldemail
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run make start}
+      POSTGRES_DB: coldemail_dev
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U coldemail]
+      interval: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 20
+  nats:
+    image: nats:2.10-alpine
+    command: [-js, -sd, /data, -m, '8222']
+    volumes: [nats_data:/data]
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://localhost:8222/healthz]
+      interval: 5s
+      retries: 20
+  backend:
+    <<: *go
+    ports: ['127.0.0.1:8080:8080']
+    environment:
+      <<: *runtime
+      API_HOST: 0.0.0.0:8080
+      GIN_MODE: release
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+      CORS_ALLOW_ORIGINS: ${APP_URL:-http://localhost:5173},http://localhost:5174
+      WEBSOCKET_URL: ws://realtime:4000/socket/websocket
+      ENCRYPTED_KEYS_PROVIDER: postgres
+      GEODB_PATH: /app/data/unused.mmdb
+      UPDATE_CHECK_ENABLED: 'false'
+      PRAMAAN_HOSTING_PROJECT: ${PRAMAAN_HOSTING_PROJECT:-}
+      SOCIAL_PROVIDER_KEY: ${SOCIAL_PROVIDER_KEY:-}
+      SOCIAL_CLIENT_ID: ${SOCIAL_CLIENT_ID:-}
+      SOCIAL_AUTHORIZE_URL: ${SOCIAL_AUTHORIZE_URL:-}
+      SOCIAL_REDIRECT_URI: ${SOCIAL_REDIRECT_URI:-}
+      PRAMAAN_CONNECTOR_RETURN_URL: ${PRAMAAN_CONNECTOR_RETURN_URL:-}
+      PRAMAAN_ENTERPRISE_REDIRECT_URI: ${PRAMAAN_ENTERPRISE_REDIRECT_URI:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      nats: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 5s
+      retries: 30
+      start_period: 30s
+  realtime:
+    build: {context: ., dockerfile: deploy/docker/realtime.Dockerfile}
+    restart: unless-stopped
+    environment:
+      PHX_HOST: localhost
+      PORT: 4000
+      DATABASE_URL: ${PRIMARY_DB:-postgres://coldemail:${POSTGRES_PASSWORD:?Run make start}@postgres:5432/coldemail_dev?sslmode=disable}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${AUTH_SECRET:?Run make start}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Run make start}
+      CHECK_ORIGIN_HOSTS: ${APP_URL:-http://localhost:5173},http://localhost:5174
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  consumer:
+    <<: *go
+    command: consumer
+    network_mode: service:backend
+    environment:
+      <<: *runtime
+      GEODB_PATH: /app/data/unused.mmdb
+    depends_on:
+      backend: {condition: service_healthy}
+  worker:
+    <<: *go
+    command: worker
+    network_mode: service:backend
+    environment:
+      <<: *runtime
+      ENCRYPTED_KEYS_PROVIDER: http
+      ENCRYPTED_KEYS_BACKEND_URL: http://127.0.0.1:8080
+      ENCRYPTED_KEYS_WORKER_TOKEN: ${INTERNAL_API_TOKEN:?Run make start}
+      WORKER_ID: 10c8f5e4-1c39-5b2a-9c8b-3d2f0a8b1a01
+      WORKER_STATE_DIR: /data/state
+    volumes: [blobs:/data/blobs, worker_state:/data/state]
+    depends_on:
+      backend: {condition: service_healthy}
+  fixture:
+    <<: *go
+    profiles: [fake]
+    command: [python, scripts/fake-pramaan.py]
+    network_mode: service:backend
+    environment:
+      PRAMAAN_SCHEMA_CHECKER: /usr/local/bin/schema-check
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:59090/fixture/generation')"]
+      interval: 5s
+      retries: 20
+  web:
+    build: {context: ., dockerfile: web/Dockerfile}
+    ports: ['127.0.0.1:5173:80']
+    environment:
+      COLD_EMAIL_API_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+      COLD_EMAIL_APP_URL: ${APP_URL:-http://localhost:5173}
+      PRAMAAN_MANAGED_AUTH_URL: ${PRAMAAN_MANAGED_AUTH_URL:-}
+    depends_on:
+      backend: {condition: service_healthy}
+  admin:
+    build: {context: ., dockerfile: admin/Dockerfile}
+    ports: ['127.0.0.1:5174:80']
+    environment:
+      COLD_EMAIL_API_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+      COLD_EMAIL_DASHBOARD_URL: ${APP_URL:-http://localhost:5173}
+      COLD_EMAIL_ENV_LABEL: development
+    depends_on:
+      backend: {condition: service_healthy}
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  blobs:
+  worker_state:

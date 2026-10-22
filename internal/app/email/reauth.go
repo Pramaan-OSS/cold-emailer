@@ -1,0 +1,133 @@
+package email
+
+// Reconnecting a broken mailbox (issue #274): a provider-side credential change
+// (password reset, revoked grant, expired app password) deactivates the account
+// and leaves an error row behind. The flows here renew the credential in place,
+// resolve exactly the errors that credential caused, and put the mailbox back
+// to work — never creating a second account for the same address.
+
+import (
+	"context"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/pramaan-oss/cold-email/internal/errx"
+	"github.com/pramaan-oss/cold-email/internal/models"
+	"github.com/rs/zerolog/log"
+)
+
+// so the finish leg updates in place instead of connecting a duplicate.
+
+// finishReauth lands a reauth round trip: same-address check, token rewrite,
+// error resolution, reactivation.
+
+// UpdateSMTPIMAPCredentials is the SMTP/IMAP counterpart of the OAuth reauth:
+// validate the replacement credentials against a live worker, store them, and
+// put the mailbox back to work.
+func (s *emailService) UpdateSMTPIMAPCredentials(ctx context.Context, orgID *uuid.UUID, accountID uuid.UUID, creds *models.SmtpImap) (*models.Email, *errx.Error) {
+	ctx, cancel := detach(ctx, connectBudget)
+	defer cancel()
+	if orgID == nil {
+		return nil, errx.ErrNoOrganization
+	}
+
+	// GetByID, not the org-scoped Get: the reconnect tail needs the owner's
+	// user id, which Get does not select. Tenancy is enforced right below.
+	account, xerr := s.emailRepository.GetByID(ctx, accountID)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if account == nil || account.OrganizationID == nil || *account.OrganizationID != *orgID {
+		return nil, errx.ErrNotFound
+	}
+	if models.InboxProvider(account.Provider) != models.InboxProviderSMTPIMAP {
+		return nil, errx.ErrEmailReauthOAuthOnly
+	}
+
+	if xerr := validateSMTPIMAPCredentials(creds); xerr != nil {
+		return nil, xerr
+	}
+
+	if s.workerAssignment == nil {
+		return nil, errx.ErrEmailOnboardNoWorker
+	}
+	if xerr := s.checkCredentials(ctx, *orgID, account.WorkerID, creds); xerr != nil {
+		return nil, xerr
+	}
+
+	if err := s.emailRepository.ReplaceSMTPIMAPCredentials(ctx, accountID, creds); err != nil {
+		return nil, errx.InternalError()
+	}
+
+	account, xerr = s.reconnectAccount(ctx, accountID)
+	if xerr != nil {
+		return nil, xerr
+	}
+
+	return account, nil
+}
+
+// reconnectAccount is the shared tail of both reconnect flows: reactivate,
+// then resolve the credential errors the new secret just fixed — Update
+// carries the status through pool membership, the worker, and the realtime
+// fanout. Errors resolve only after a successful reactivation, or a failed
+// Update would clear the banner (and its reconnect button) while the mailbox
+// stays broken. It loads the row itself because the owner-scoped Update needs
+// user_id, which not every caller's read path selects.
+func (s *emailService) reconnectAccount(ctx context.Context, accountID uuid.UUID) (*models.Email, *errx.Error) {
+	account, xerr := s.emailRepository.GetByID(ctx, accountID)
+	if xerr != nil {
+		return nil, xerr
+	}
+	if account == nil {
+		return nil, errx.ErrNotFound
+	}
+	if account.OrganizationID == nil {
+		return nil, errx.ErrNoOrganization
+	}
+	status := "active"
+	updated, xerr := s.Update(ctx, account.OrganizationID.String(), account.UserID, account.ID.String(), &models.UpdateEmail{Status: &status})
+	if xerr != nil {
+		return nil, xerr
+	}
+	s.resolveCredentialErrors(ctx, account.ID)
+	return updated, nil
+}
+
+// resolveCredentialErrors clears the credential-class error rows; unrelated
+// errors (domain auth, sync fair use) stay visible because a reconnect does
+// not fix them.
+func (s *emailService) resolveCredentialErrors(ctx context.Context, accountID uuid.UUID) {
+	if s.accountErrors == nil {
+		return
+	}
+	codes := make([]string, 0, len(errx.CredentialMailErrorCodes))
+	for _, c := range errx.CredentialMailErrorCodes {
+		codes = append(codes, string(c))
+	}
+	if xerr := s.accountErrors.ResolveByCodes(ctx, accountID, codes, "reconnect"); xerr != nil {
+		log.Warn().Str("account_id", accountID.String()).Str("error", xerr.Message).Msg("could not resolve credential errors after reconnect")
+	}
+}
+
+// validateSMTPIMAPCredentials checks a replacement credential set: same bar as
+// validateSMTPIMAPInput minus the account fields, which a reauth never changes.
+func validateSMTPIMAPCredentials(creds *models.SmtpImap) *errx.Error {
+	if creds == nil || creds.SMTP == nil || creds.IMAP == nil {
+		return errx.ErrEmailCredentialsRequired
+	}
+	if strings.TrimSpace(creds.SMTP.Host) == "" {
+		return errx.ErrEmailSMTPHost
+	}
+	if !validPort(creds.SMTP.Port) {
+		return errx.ErrEmailSMTPPort
+	}
+	if strings.TrimSpace(creds.IMAP.Host) == "" {
+		return errx.ErrEmailIMAPHost
+	}
+	if !validPort(creds.IMAP.Port) {
+		return errx.ErrEmailIMAPPort
+	}
+	normalizeMailPasswords(creds.SMTP, creds.IMAP)
+	return validateMailSecurity(creds.SMTP, creds.IMAP)
+}

@@ -1,0 +1,24 @@
+[Unit]
+Description=ColdEmail event consumer
+Documentation=https://example.test/development/bare-metal/
+After=network-online.target postgresql.service redis.service nats.service coldemail-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coldemail
+Group=coldemail
+EnvironmentFile=/etc/coldemail/coldemail.env
+WorkingDirectory=/opt/coldemail
+ExecStart=/opt/coldemail/bin/consumer
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/coldemail
+
+[Install]
+WantedBy=multi-user.target

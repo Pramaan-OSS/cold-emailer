@@ -1,0 +1,23 @@
+[Unit]
+Description=ColdEmail forms service (hosted form pages, embeds and submissions)
+Documentation=https://example.test/development/bare-metal/
+After=network-online.target coldemail-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coldemail
+Group=coldemail
+EnvironmentFile=/etc/coldemail/coldemail.env
+WorkingDirectory=/opt/coldemail
+ExecStart=/opt/coldemail/bin/forms
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

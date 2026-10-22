@@ -1,0 +1,524 @@
+# Build this checkout; scripts/start.py generates private instance keys.
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coldemail
+      POSTGRES_PASSWORD: coldemail
+      POSTGRES_DB: coldemail_dev
+    volumes:
+    - ${COLD_EMAIL_PG_DATA:-postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U coldemail
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    restart: unless-stopped
+    image: redis:7-alpine
+    volumes:
+    - ${COLD_EMAIL_REDIS_DATA:-redis_data}:/data
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment: {}
+  nats:
+    restart: unless-stopped
+    image: nats:2.10-alpine
+    command:
+    - -js
+    - -sd
+    - /data
+    - -m
+    - '8222'
+    volumes:
+    - ${COLD_EMAIL_NATS_DATA:-nats_data}:/data
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --spider
+      - -q
+      - http://localhost:8222/healthz
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment: {}
+  backend:
+    restart: unless-stopped
+    stop_grace_period: 60s
+    image: cold-email/backend:local
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        VERSION: ${COLD_EMAIL_BUILD_VERSION:-}
+        COMMIT: ${COLD_EMAIL_BUILD_COMMIT:-}
+        BUILT_AT: ${COLD_EMAIL_BUILD_TIME:-}
+    ports:
+    - 8080:8080
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-development-secret-key-base-minimum-64-characters-for-phoenix}
+      ALLOW_INSECURE_DEFAULTS: ${ALLOW_INSECURE_DEFAULTS:-}
+      EVENTBUS_PROVIDER: ${EVENTBUS_PROVIDER:-nats}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      CODEC_PROVIDER: ${CODEC_PROVIDER:-json}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-}
+      KMS_PROVIDER: ${KMS_PROVIDER:-local}
+      KMS_LOCAL_MASTER_KEY: ${KMS_LOCAL_MASTER_KEY:-Xr0JA7gqF2POy29a7MRByyqddivTNt8WOyKsOXklazk=}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      BLOB_PROVIDER: ${BLOB_PROVIDER:-filesystem}
+      BLOB_FS_ROOT: ${BLOB_FS_ROOT:-/data/blobs}
+      BLOB_BUCKET: ${BLOB_BUCKET:-}
+      BLOB_PUBLIC_BASE_URL: ${BLOB_PUBLIC_BASE_URL:-${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}/public}
+      TASKS_PROVIDER: ${TASKS_PROVIDER:-local}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-none}
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      FORMS_DOMAIN: ${FORMS_DOMAIN:-}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self_hosted}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      EMAIL_NAME: Cold Email
+      EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
+      AUTH_LOGIN_CODE: ${AUTH_LOGIN_CODE:-}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-}
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-}
+      DISABLE_PASSWORD_LOGIN: ${DISABLE_PASSWORD_LOGIN:-false}
+      SSO_AUTO_PROVISION: ${SSO_AUTO_PROVISION:-}
+      AUTH_IP_RATE_LIMIT: ${AUTH_IP_RATE_LIMIT:-60}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      COLD_EMAIL_BOOTSTRAP_EMAIL: ${COLD_EMAIL_BOOTSTRAP_EMAIL:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH: ${COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD: ${COLD_EMAIL_BOOTSTRAP_PASSWORD:-}
+      COLD_EMAIL_BOOTSTRAP_ORG: ${COLD_EMAIL_BOOTSTRAP_ORG:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-}
+      OIDC_DEFAULT_ORG: ${OIDC_DEFAULT_ORG:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
+      EMAIL_BRAND_NAME: ${EMAIL_BRAND_NAME:-}
+      EMAIL_BRAND_LEGAL_ENTITY: ${EMAIL_BRAND_LEGAL_ENTITY:-}
+      EMAIL_BRAND_COMPANY_NUMBER: ${EMAIL_BRAND_COMPANY_NUMBER:-}
+      EMAIL_BRAND_PLACE_OF_REG: ${EMAIL_BRAND_PLACE_OF_REG:-}
+      EMAIL_BRAND_ADDRESS: ${EMAIL_BRAND_ADDRESS:-}
+      EMAIL_BRAND_WEBSITE_URL: ${EMAIL_BRAND_WEBSITE_URL:-}
+      EMAIL_BRAND_SUPPORT_EMAIL: ${EMAIL_BRAND_SUPPORT_EMAIL:-}
+      EMAIL_BRAND_TERMS_URL: ${EMAIL_BRAND_TERMS_URL:-}
+      EMAIL_BRAND_PRIVACY_URL: ${EMAIL_BRAND_PRIVACY_URL:-}
+      PRIMARY_DB: ${PRIMARY_DB:-postgres://coldemail:coldemail@postgres:5432/coldemail_dev?sslmode=disable}
+      REDIS: ${REDIS:-redis://redis:6379}
+      AUTH_SECRET: ${AUTH_SECRET:-local-dev-auth-secret-minimum-32-characters-long}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+      NODE_BROKER_TOKEN: ${NODE_BROKER_TOKEN:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MODEL_TRIAL: ${AI_MODEL_TRIAL:-}
+      AI_MODEL_PAID: ${AI_MODEL_PAID:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_FREE: ${AI_FREE:-}
+      EMAIL_VERIFY_HELO_HOST: ${EMAIL_VERIFY_HELO_HOST:-}
+      EMAIL_VERIFY_MAIL_FROM: ${EMAIL_VERIFY_MAIL_FROM:-}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARCH_API_URL: ${SEARCH_API_URL:-}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      NOTIFICATION_PUSH_WINDOW: ${NOTIFICATION_PUSH_WINDOW:-}
+      NOTIFICATION_EMAIL_DAILY_CAP: ${NOTIFICATION_EMAIL_DAILY_CAP:-}
+      API_HOST: 0.0.0.0:8080
+      GIN_MODE: release
+      APP_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://${PUBLIC_HOST:-localhost}:5173,http://${PUBLIC_HOST:-localhost}:5174}
+      WEBSOCKET_URL: ${WEBSOCKET_URL:-ws://${PUBLIC_HOST:-localhost}:4000/socket/websocket}
+      ENCRYPTED_KEYS_PROVIDER: postgres
+      TRACKING_DOMAIN: ${TRACKING_DOMAIN:-${PUBLIC_HOST:-localhost}:3000}
+      GEODB_PATH: ${GEODB_PATH:-/app/data/GeoLite2-City.mmdb}
+      INBOX_TAGGING_ENABLED: ${INBOX_TAGGING_ENABLED:-false}
+      MAILHOST_ISPDB: ${MAILHOST_ISPDB:-false}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      WEBAUTHN_RP_ORIGINS: ${WEBAUTHN_RP_ORIGINS:-}
+      WORKER_IMAGE: ${WORKER_IMAGE:-}
+      UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
+      UPDATE_CHECK_INTERVAL: ${UPDATE_CHECK_INTERVAL:-30m}
+      UPDATE_CHANNEL: ${UPDATE_CHANNEL:-stable}
+      RELEASES_GITHUB_REPO: ${RELEASES_GITHUB_REPO:-coldemail/coldemail}
+      RELEASES_GITHUB_TOKEN: ${RELEASES_GITHUB_TOKEN:-}
+      UPDATER_URL: ${UPDATER_URL:-http://updater:8095}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-${INTERNAL_API_TOKEN:-local-dev-internal-token}}
+      PRAMAAN_API_KEY: ${PRAMAAN_API_KEY:-}
+      PRAMAAN_BASE_URL: ${PRAMAAN_BASE_URL:-https://api.pramaan.dev}
+      PRAMAAN_HOSTING_PROJECT: ${PRAMAAN_HOSTING_PROJECT:-}
+      SOCIAL_PROVIDER_KEY: ${SOCIAL_PROVIDER_KEY:-}
+      SOCIAL_CLIENT_ID: ${SOCIAL_CLIENT_ID:-}
+      SOCIAL_REDIRECT_URI: ${SOCIAL_REDIRECT_URI:-}
+      SOCIAL_AUTHORIZE_URL: ${SOCIAL_AUTHORIZE_URL:-}
+      PRAMAAN_CONNECTOR_RETURN_URL: ${PRAMAAN_CONNECTOR_RETURN_URL:-}
+      PRAMAAN_ENTERPRISE_REDIRECT_URI: ${PRAMAAN_ENTERPRISE_REDIRECT_URI:-}
+    volumes:
+    - ${COLD_EMAIL_BLOBS:-blobs}:/data/blobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --no-verbose
+      - --tries=1
+      - --spider
+      - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+  forms:
+    restart: unless-stopped
+    image: cold-email/forms:local
+    build:
+      context: .
+      dockerfile: deploy/docker/forms.Dockerfile
+      args:
+        VERSION: ${COLD_EMAIL_BUILD_VERSION:-}
+        COMMIT: ${COLD_EMAIL_BUILD_COMMIT:-}
+        BUILT_AT: ${COLD_EMAIL_BUILD_TIME:-}
+    ports:
+    - ${FORMS_PORT:-8090}:8090
+    environment:
+      GIN_MODE: release
+      FORMS_PORT: '8090'
+      FORM_IP_RATE_LIMIT: ${FORM_IP_RATE_LIMIT:-}
+      TRUSTED_PROXIES: ${FORMS_TRUSTED_PROXIES:-}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+      APP_ENV: ${APP_ENV:-dev}
+    extra_hosts:
+    - host.docker.internal:host-gateway
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --no-verbose
+      - --tries=1
+      - --spider
+      - http://127.0.0.1:8090/health
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+  consumer:
+    restart: unless-stopped
+    stop_grace_period: 60s
+    image: cold-email/consumer:local
+    build:
+      context: .
+      dockerfile: deploy/docker/consumer.Dockerfile
+      args:
+        VERSION: ${COLD_EMAIL_BUILD_VERSION:-}
+        COMMIT: ${COLD_EMAIL_BUILD_COMMIT:-}
+        BUILT_AT: ${COLD_EMAIL_BUILD_TIME:-}
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-development-secret-key-base-minimum-64-characters-for-phoenix}
+      ALLOW_INSECURE_DEFAULTS: ${ALLOW_INSECURE_DEFAULTS:-}
+      EVENTBUS_PROVIDER: ${EVENTBUS_PROVIDER:-nats}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      CODEC_PROVIDER: ${CODEC_PROVIDER:-json}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-}
+      KMS_PROVIDER: ${KMS_PROVIDER:-local}
+      KMS_LOCAL_MASTER_KEY: ${KMS_LOCAL_MASTER_KEY:-Xr0JA7gqF2POy29a7MRByyqddivTNt8WOyKsOXklazk=}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      BLOB_PROVIDER: ${BLOB_PROVIDER:-filesystem}
+      BLOB_FS_ROOT: ${BLOB_FS_ROOT:-/data/blobs}
+      BLOB_BUCKET: ${BLOB_BUCKET:-}
+      BLOB_PUBLIC_BASE_URL: ${BLOB_PUBLIC_BASE_URL:-${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}/public}
+      TASKS_PROVIDER: ${TASKS_PROVIDER:-local}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-none}
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      FORMS_DOMAIN: ${FORMS_DOMAIN:-}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self_hosted}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      EMAIL_NAME: Cold Email
+      EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
+      AUTH_LOGIN_CODE: ${AUTH_LOGIN_CODE:-}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-}
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-}
+      DISABLE_PASSWORD_LOGIN: ${DISABLE_PASSWORD_LOGIN:-false}
+      SSO_AUTO_PROVISION: ${SSO_AUTO_PROVISION:-}
+      AUTH_IP_RATE_LIMIT: ${AUTH_IP_RATE_LIMIT:-60}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      COLD_EMAIL_BOOTSTRAP_EMAIL: ${COLD_EMAIL_BOOTSTRAP_EMAIL:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH: ${COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD: ${COLD_EMAIL_BOOTSTRAP_PASSWORD:-}
+      COLD_EMAIL_BOOTSTRAP_ORG: ${COLD_EMAIL_BOOTSTRAP_ORG:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-}
+      OIDC_DEFAULT_ORG: ${OIDC_DEFAULT_ORG:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
+      EMAIL_BRAND_NAME: ${EMAIL_BRAND_NAME:-}
+      EMAIL_BRAND_LEGAL_ENTITY: ${EMAIL_BRAND_LEGAL_ENTITY:-}
+      EMAIL_BRAND_COMPANY_NUMBER: ${EMAIL_BRAND_COMPANY_NUMBER:-}
+      EMAIL_BRAND_PLACE_OF_REG: ${EMAIL_BRAND_PLACE_OF_REG:-}
+      EMAIL_BRAND_ADDRESS: ${EMAIL_BRAND_ADDRESS:-}
+      EMAIL_BRAND_WEBSITE_URL: ${EMAIL_BRAND_WEBSITE_URL:-}
+      EMAIL_BRAND_SUPPORT_EMAIL: ${EMAIL_BRAND_SUPPORT_EMAIL:-}
+      EMAIL_BRAND_TERMS_URL: ${EMAIL_BRAND_TERMS_URL:-}
+      EMAIL_BRAND_PRIVACY_URL: ${EMAIL_BRAND_PRIVACY_URL:-}
+      PRIMARY_DB: ${PRIMARY_DB:-postgres://coldemail:coldemail@postgres:5432/coldemail_dev?sslmode=disable}
+      REDIS: ${REDIS:-redis://redis:6379}
+      AUTH_SECRET: ${AUTH_SECRET:-local-dev-auth-secret-minimum-32-characters-long}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+      NODE_BROKER_TOKEN: ${NODE_BROKER_TOKEN:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MODEL_TRIAL: ${AI_MODEL_TRIAL:-}
+      AI_MODEL_PAID: ${AI_MODEL_PAID:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_FREE: ${AI_FREE:-}
+      EMAIL_VERIFY_HELO_HOST: ${EMAIL_VERIFY_HELO_HOST:-}
+      EMAIL_VERIFY_MAIL_FROM: ${EMAIL_VERIFY_MAIL_FROM:-}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARCH_API_URL: ${SEARCH_API_URL:-}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      NOTIFICATION_PUSH_WINDOW: ${NOTIFICATION_PUSH_WINDOW:-}
+      NOTIFICATION_EMAIL_DAILY_CAP: ${NOTIFICATION_EMAIL_DAILY_CAP:-}
+      ENCRYPTED_KEYS_PROVIDER: postgres
+      GEODB_PATH: ${GEODB_PATH:-/app/data/GeoLite2-City.mmdb}
+      INBOX_TAGGING_ENABLED: ${INBOX_TAGGING_ENABLED:-false}
+      PRAMAAN_API_KEY: ${PRAMAAN_API_KEY:-}
+      PRAMAAN_BASE_URL: ${PRAMAAN_BASE_URL:-https://api.pramaan.dev}
+    volumes:
+    - ${COLD_EMAIL_BLOBS:-blobs}:/data/blobs
+    depends_on:
+      backend:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+  worker:
+    restart: unless-stopped
+    stop_grace_period: 60s
+    image: cold-email/worker:local
+    build:
+      context: .
+      dockerfile: deploy/docker/worker.Dockerfile
+      args:
+        VERSION: ${COLD_EMAIL_BUILD_VERSION:-}
+        COMMIT: ${COLD_EMAIL_BUILD_COMMIT:-}
+        BUILT_AT: ${COLD_EMAIL_BUILD_TIME:-}
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-development-secret-key-base-minimum-64-characters-for-phoenix}
+      ALLOW_INSECURE_DEFAULTS: ${ALLOW_INSECURE_DEFAULTS:-}
+      EVENTBUS_PROVIDER: ${EVENTBUS_PROVIDER:-nats}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      CODEC_PROVIDER: ${CODEC_PROVIDER:-json}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-}
+      KMS_PROVIDER: ${KMS_PROVIDER:-local}
+      KMS_LOCAL_MASTER_KEY: ${KMS_LOCAL_MASTER_KEY:-Xr0JA7gqF2POy29a7MRByyqddivTNt8WOyKsOXklazk=}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      BLOB_PROVIDER: ${BLOB_PROVIDER:-filesystem}
+      BLOB_FS_ROOT: ${BLOB_FS_ROOT:-/data/blobs}
+      BLOB_BUCKET: ${BLOB_BUCKET:-}
+      BLOB_PUBLIC_BASE_URL: ${BLOB_PUBLIC_BASE_URL:-${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}/public}
+      TASKS_PROVIDER: ${TASKS_PROVIDER:-local}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-none}
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      FORMS_DOMAIN: ${FORMS_DOMAIN:-}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self_hosted}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      EMAIL_NAME: ${EMAIL_NAME:-ColdEmail}
+      EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
+      AUTH_LOGIN_CODE: ${AUTH_LOGIN_CODE:-}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-}
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-}
+      DISABLE_PASSWORD_LOGIN: ${DISABLE_PASSWORD_LOGIN:-false}
+      SSO_AUTO_PROVISION: ${SSO_AUTO_PROVISION:-}
+      AUTH_IP_RATE_LIMIT: ${AUTH_IP_RATE_LIMIT:-60}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      COLD_EMAIL_BOOTSTRAP_EMAIL: ${COLD_EMAIL_BOOTSTRAP_EMAIL:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH: ${COLD_EMAIL_BOOTSTRAP_PASSWORD_HASH:-}
+      COLD_EMAIL_BOOTSTRAP_PASSWORD: ${COLD_EMAIL_BOOTSTRAP_PASSWORD:-}
+      COLD_EMAIL_BOOTSTRAP_ORG: ${COLD_EMAIL_BOOTSTRAP_ORG:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-}
+      OIDC_DEFAULT_ORG: ${OIDC_DEFAULT_ORG:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
+      EMAIL_BRAND_NAME: ${EMAIL_BRAND_NAME:-}
+      EMAIL_BRAND_LEGAL_ENTITY: ${EMAIL_BRAND_LEGAL_ENTITY:-}
+      EMAIL_BRAND_COMPANY_NUMBER: ${EMAIL_BRAND_COMPANY_NUMBER:-}
+      EMAIL_BRAND_PLACE_OF_REG: ${EMAIL_BRAND_PLACE_OF_REG:-}
+      EMAIL_BRAND_ADDRESS: ${EMAIL_BRAND_ADDRESS:-}
+      EMAIL_BRAND_WEBSITE_URL: ${EMAIL_BRAND_WEBSITE_URL:-}
+      EMAIL_BRAND_SUPPORT_EMAIL: ${EMAIL_BRAND_SUPPORT_EMAIL:-}
+      EMAIL_BRAND_TERMS_URL: ${EMAIL_BRAND_TERMS_URL:-}
+      EMAIL_BRAND_PRIVACY_URL: ${EMAIL_BRAND_PRIVACY_URL:-}
+      PRIMARY_DB: ${PRIMARY_DB:-postgres://coldemail:coldemail@postgres:5432/coldemail_dev?sslmode=disable}
+      REDIS: ${REDIS:-redis://redis:6379}
+      AUTH_SECRET: ${AUTH_SECRET:-local-dev-auth-secret-minimum-32-characters-long}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+      NODE_BROKER_TOKEN: ${NODE_BROKER_TOKEN:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MODEL_TRIAL: ${AI_MODEL_TRIAL:-}
+      AI_MODEL_PAID: ${AI_MODEL_PAID:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_FREE: ${AI_FREE:-}
+      EMAIL_VERIFY_HELO_HOST: ${EMAIL_VERIFY_HELO_HOST:-}
+      EMAIL_VERIFY_MAIL_FROM: ${EMAIL_VERIFY_MAIL_FROM:-}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARCH_API_URL: ${SEARCH_API_URL:-}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      NOTIFICATION_PUSH_WINDOW: ${NOTIFICATION_PUSH_WINDOW:-}
+      NOTIFICATION_EMAIL_DAILY_CAP: ${NOTIFICATION_EMAIL_DAILY_CAP:-}
+      MAIL_TLS_INSECURE: ${MAIL_TLS_INSECURE:-true}
+      ENCRYPTED_KEYS_PROVIDER: http
+      ENCRYPTED_KEYS_BACKEND_URL: ${ENCRYPTED_KEYS_BACKEND_URL:-http://backend:8080}
+      ENCRYPTED_KEYS_WORKER_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+      WORKER_ID: ${WORKER_ID:-}
+      WORKER_STATE_DIR: ${WORKER_STATE_DIR:-/data/state}
+      COLD_EMAIL_NODE_REGION: ${COLD_EMAIL_NODE_REGION:-}
+      PRAMAAN_API_KEY: ${PRAMAAN_API_KEY:-}
+      PRAMAAN_BASE_URL: ${PRAMAAN_BASE_URL:-https://api.pramaan.dev}
+    volumes:
+    - ${COLD_EMAIL_BLOBS:-blobs}:/data/blobs
+    - ${COLD_EMAIL_WORKER_STATE:-worker_state}:/data/state
+    depends_on:
+      backend:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+  tracking:
+    restart: unless-stopped
+    image: cold-email/tracking:local
+    build:
+      context: ./tracking
+      dockerfile: Dockerfile
+    ports:
+    - ${TRACKING_PORT:-3000}:3000
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      TRACKING_HOST: 0.0.0.0
+      TRACKING_PORT: '3000'
+      EVENTBUS_PROVIDER: ${EVENTBUS_PROVIDER:-nats}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-}
+      KAFKA_TRACKING_TOPIC: ${KAFKA_TRACKING_TOPIC:-tracking-events}
+      TRACKING_RATE_LIMIT_PER_MIN: ${TRACKING_RATE_LIMIT_PER_MIN:-}
+      TRACKING_PAGEHIT_RATE_LIMIT_PER_MIN: ${TRACKING_PAGEHIT_RATE_LIMIT_PER_MIN:-}
+      TRACKING_TRUSTED_PROXIES: ${TRACKING_TRUSTED_PROXIES:-}
+      TRACKING_CLIENT_IP_HEADER: ${TRACKING_CLIENT_IP_HEADER:-}
+      TRACKING_SCANNER_BUILTINS: ${TRACKING_SCANNER_BUILTINS:-}
+      TRACKING_SCANNER_NETWORKS: ${TRACKING_SCANNER_NETWORKS:-}
+      TRACKING_SCANNER_CLICK_NETWORKS: ${TRACKING_SCANNER_CLICK_NETWORKS:-}
+      TRACKING_SCANNER_ASN_HEADER: ${TRACKING_SCANNER_ASN_HEADER:-}
+      TRACKING_SCANNER_ASN_DB: ${TRACKING_SCANNER_ASN_DB:-}
+      TRACKING_SCANNER_ASN_DB_URL: ${TRACKING_SCANNER_ASN_DB_URL:-}
+      TRACKING_IP_HASH_KEY: ${TRACKING_IP_HASH_KEY:-}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
+    extra_hosts:
+    - host.docker.internal:host-gateway
+    depends_on:
+      nats:
+        condition: service_healthy
+  realtime:
+    restart: unless-stopped
+    image: cold-email/realtime:local
+    build:
+      context: .
+      dockerfile: deploy/docker/realtime.Dockerfile
+    ports:
+    - 4000:4000
+    environment:
+      PHX_HOST: ${PHX_HOST:-${PUBLIC_HOST:-localhost}}
+      PORT: 4000
+      DATABASE_URL: ${PRIMARY_DB:-postgres://coldemail:coldemail@postgres:5432/coldemail_dev?sslmode=disable}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      REDIS_URL: ${REDIS:-redis://redis:6379}
+      JWT_SECRET: ${AUTH_SECRET:-local-dev-auth-secret-minimum-32-characters-long}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-development-secret-key-base-minimum-64-characters-for-phoenix}
+      CHECK_ORIGIN_HOSTS: ${CHECK_ORIGIN_HOSTS:-}
+      CHECK_ORIGIN: ${CHECK_ORIGIN:-false}
+      APP_ENV: ${APP_ENV:-dev}
+    env_file:
+    - path: .env
+      required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  web:
+    restart: unless-stopped
+    image: cold-email/web:local
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+    - 5173:80
+    environment:
+      COLD_EMAIL_API_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}
+      COLD_EMAIL_APP_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
+      COLD_EMAIL_COMPANY_LOGOS: ${COLD_EMAIL_COMPANY_LOGOS:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+  admin:
+    restart: unless-stopped
+    image: cold-email/admin:local
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    ports:
+    - 5174:80
+    environment:
+      COLD_EMAIL_API_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}
+      COLD_EMAIL_DASHBOARD_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
+      COLD_EMAIL_ENV_LABEL: ${ENV_LABEL:-development}
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  postgres_data: null
+  redis_data: null
+  nats_data: null
+  blobs: null
+  worker_state: null
+  updater_state: null

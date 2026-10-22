@@ -1,0 +1,25 @@
+[Unit]
+Description=ColdEmail worker (send and sync executor)
+Documentation=https://example.test/development/bare-metal/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coldemail
+Group=coldemail
+# The worker has its own env file: it never sees the database URL or AUTH_SECRET.
+EnvironmentFile=/etc/coldemail/worker.env
+WorkingDirectory=/opt/coldemail
+ExecStart=/opt/coldemail/bin/worker
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/coldemail
+
+[Install]
+WantedBy=multi-user.target

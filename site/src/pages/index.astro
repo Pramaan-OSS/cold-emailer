@@ -1,0 +1,5 @@
+---
+import "../tokens.css";
+const app = import.meta.env.PUBLIC_APP_URL || 'http://localhost:5173';
+---
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Cold Email</title><link rel="icon" href="/favicon.svg"/></head><body><main><h1>Cold Email</h1><p>Plan outreach, manage contacts and keep conversations in one workspace.</p><p>Connections run through Pramaan.</p><a href={app}>Open your workspace</a></main><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font-family:var(--sans)}main{max-width:38rem;margin:24px;padding:32px;border:1px solid var(--glass-edge);border-radius:24px;background:var(--glass);box-shadow:var(--glass-shadow)}h1{font-family:var(--serif);font-weight:400;font-size:40px}a{color:inherit;border:1px solid var(--btn-edge);border-radius:9999px;padding:10px 16px;display:inline-block;text-decoration:none;background:var(--btn-glass)}</style></body></html>
