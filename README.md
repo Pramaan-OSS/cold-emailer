@@ -55,7 +55,7 @@ pnpm --dir web test:run --maxWorkers=4
 pnpm --dir web build
 ```
 
-The web and admin apps use the published `@pramaan/sdk@0.1.0` package. The web app’s single Pramaan module preserves long-running job waits and failed reports. Lead search can use the lead.find outcome: review its estimate before running; an unavailable outcome falls back to quoted company search. Tests use fake clients. `scripts/fake-pramaan.py`, `compose.local-check.yml` and `scripts/start-local-check.py` provide an isolated synthetic local check; they never call external services.
+The web and admin apps use the published `@pramaan/sdk@0.1.4` package. The web app’s single Pramaan module preserves long-running job waits and failed reports. Lead search can use the lead.find outcome: review its estimate before running; an unavailable outcome falls back to quoted company search. Tests use fake clients. `scripts/fake-pramaan.py`, `compose.local-check.yml` and `scripts/start-local-check.py` provide an isolated synthetic local check; they never call external services.
 
 Without a Pramaan key, local sign-in, contacts, campaign editing, files and settings work; sending, enrichment, generation and connected services require a key. Shared warmup pools, raw mailbox protocol diagnostics, automatic directory delegation and the hosted challenge widget are unavailable. App actions and events depend on the connected catalogue; unavailable actions remain off. Local storage, Postgres, Redis, NATS and the self-hosted live-update service are retained infrastructure. No remote repository or deployment is created by this template.
 
