@@ -72,8 +72,10 @@ func (s MailboxPlacementState) Residency(now time.Time) time.Duration {
 		return 0
 	}
 	d := now.Sub(*s.AssignedAt)
-	if d < 0 {
-		return 0
+	if d <= 0 {
+		// Database and application clocks can differ. A known assignment at
+		// or just ahead of now is new, not the zero/unknown settled sentinel.
+		return time.Nanosecond
 	}
 	return d
 }

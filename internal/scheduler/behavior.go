@@ -139,7 +139,10 @@ func (s *schedulerService) behaviorGapWith(r behavior.Resolved, at time.Time, fa
 // The floor is now plus a few seconds of spread, so a batch of clamped tasks
 // does not all land on the same instant.
 func notBefore(candidate time.Time) time.Time {
-	now := time.Now()
+	return notBeforeAt(candidate, time.Now())
+}
+
+func notBeforeAt(candidate, now time.Time) time.Time {
 	if candidate.After(now) {
 		return candidate
 	}

@@ -284,7 +284,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	}
 
 	// STEP 4: Calculate base time from sequence wait_after
-	baseTime := time.Now()
+	baseTime := s.campaignTime()
 
 	// Check if this contact has already received emails in this campaign
 	lastSentTime, err := s.campaignProgressRepo.GetContactLastSequenceTime(ctx, nextPair.ContactID, campaignID)
@@ -324,8 +324,8 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	// the task sent it hours after the window closed, or days after the
 	// campaign ended. The window has to be asked about the send that is
 	// actually about to happen, which is this one, now.
-	if baseTime.Before(time.Now()) {
-		baseTime = time.Now()
+	if baseTime.Before(s.campaignTime()) {
+		baseTime = s.campaignTime()
 	}
 
 	// STEP 5: Apply campaign schedule constraints
@@ -500,7 +500,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 
 		warmupAgeDays := 0
 		if acct.Warmup != nil {
-			warmupAgeDays = int(time.Since(*acct.Warmup).Hours() / 24)
+			warmupAgeDays = int(s.campaignTime().Sub(*acct.Warmup).Hours() / 24)
 		}
 
 		cand := AccountCandidate{
@@ -557,7 +557,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	if len(candidates) == 0 {
 		switch {
 		case recoveryHeld > 0 || cooling > 0:
-			resume := time.Now().Add(workerRecheck)
+			resume := s.campaignTime().Add(workerRecheck)
 			if !sendRecheck.IsZero() && sendRecheck.Before(resume) {
 				resume = sendRecheck
 			}
@@ -572,7 +572,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 			// whose hours reopen sooner comes back first. A deferral, never a
 			// pause, logged under its own name so an earlier line about
 			// budgets or hours does not hide it for the rest of the day.
-			resume := time.Now().Add(workerRecheck)
+			resume := s.campaignTime().Add(workerRecheck)
 			if hoursClosed > 0 {
 				if open := nextScheduleSlot(reopensAt, windows, campaignTZ); open.Before(resume) {
 					resume = open
@@ -772,7 +772,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 		gapSeconds = s.behaviorGap(selected.Behavior, candidateTime, account.MinWaitTime)
 		// The gap the selection filter drew, while the send is still today.
 		if drawn, ok := pass.gapDraws[account.ID]; ok &&
-			(!selected.Behavior.Enabled || sameLocalDay(time.Now(), candidateTime, selected.Behavior.Loc)) {
+			(!selected.Behavior.Enabled || sameLocalDay(s.campaignTime(), candidateTime, selected.Behavior.Loc)) {
 			gapSeconds = drawn
 		}
 	}
@@ -800,7 +800,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	hardFloor := candidateTime
 
 	// A preview reports that FLOOR and stops there. Steps 9 to 13 below are
-	// spacing: drawn fresh from a random source and measured from time.Now(),
+	// spacing: drawn fresh from a random source and measured from the campaign clock,
 	// so running them for a read made two reads of one unchanged campaign
 	// answer minutes apart, and the drawer showed a time that walked forward on
 	// every refresh while the step sat there marked Due (issue #437). Every
@@ -833,7 +833,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 		remainingMinutes, ok := remainingSendMinutes(selected, candidateTime, windows, campaignTZ)
 		if ok && remainingMinutes > 0 {
 			idealInterval := poolSendInterval(remainingMinutes, remainingEmails, gapSeconds, len(pool), rand.Float64())
-			distributedTime := time.Now().Add(idealInterval)
+			distributedTime := s.campaignTime().Add(idealInterval)
 			if distributedTime.After(candidateTime) {
 				candidateTime = distributedTime
 			}
@@ -881,11 +881,11 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	// without erasing the pacing. Deliberately NOT rounded to a 5-minute grid —
 	// a fleet that only ever sends at :x0/:x5 marks is a detectable pattern.
 	if !preview {
-		if spread := min(int(time.Until(candidateTime).Minutes())/2, 20); spread > 0 {
+		if spread := min(int(candidateTime.Sub(s.campaignTime()).Minutes())/2, 20); spread > 0 {
 			candidateTime = candidateTime.Add(time.Minute * time.Duration(randomJitter(-spread, spread)))
 		}
 	}
-	candidateTime = notBefore(candidateTime)
+	candidateTime = s.campaignNotBefore(candidateTime)
 
 	// STEP 12: Keep clear of sends already booked on this mailbox. Another
 	// campaign's parked wake-up is not one (issue #942): it re-picks its
@@ -929,7 +929,7 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	// STEP 14: Ensure still within a sending window after all adjustments
 	// (jitter/conflict/distribution can push into a gap between intervals, or
 	// out of the mailbox's workday). Satisfies both calendars.
-	candidateTime = s.intersectWindows(ctx, selected.Behavior, notBefore(candidateTime), windows, campaignTZ)
+	candidateTime = s.intersectWindows(ctx, selected.Behavior, s.campaignNotBefore(candidateTime), windows, campaignTZ)
 
 	// STEP 14.5: A task can fire ahead of the step's hard constraints — an
 	// early successor tick, a duplicate chain, a moved slot. The task handler
@@ -937,15 +937,15 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	// pair here is what sends a "wait 3 days" follow-up seconds after step
 	// one. Report it deferred instead: the caller reschedules at the computed
 	// slot without sending. A task that fired at its own slot always passes.
-	if time.Until(hardFloor) > config.CampaignNotDueGraceSeconds*time.Second {
+	if hardFloor.Sub(s.campaignTime()) > config.CampaignNotDueGraceSeconds*time.Second {
 		if leadFloor {
-			return scheduledSlot(candidateTime, preview), nil, account.ID, ErrLeadDeferred
+			return s.scheduledSlot(candidateTime, preview), nil, account.ID, ErrLeadDeferred
 		}
-		return scheduledSlot(candidateTime, preview), nil, account.ID, ErrCampaignDeferred
+		return s.scheduledSlot(candidateTime, preview), nil, account.ID, ErrCampaignDeferred
 	}
 
 	// STEP 15: Randomise the sub-minute component so sends never land on :00.
-	return scheduledSlot(candidateTime, preview), nextPair, account.ID, nil
+	return s.scheduledSlot(candidateTime, preview), nextPair, account.ID, nil
 }
 
 // stableCandidate is the preview's stand-in for rotation: the strongest
@@ -967,11 +967,11 @@ func stableCandidate(candidates []AccountCandidate) *AccountCandidate {
 // for a preview: the sub-minute randomisation exists so the fleet does not send
 // at second :00, and a read-only answer that moved by up to a minute between
 // two refreshes was reporting that jitter as if it were news.
-func scheduledSlot(t time.Time, preview bool) time.Time {
+func (s *schedulerService) scheduledSlot(t time.Time, preview bool) time.Time {
 	if preview {
-		return notBefore(t)
+		return s.campaignNotBefore(t)
 	}
-	return finalSlot(t)
+	return s.finalCampaignSlot(t)
 }
 
 // deferToNextDay pushes a candidate time to the next valid campaign day within
@@ -993,11 +993,11 @@ func (s *schedulerService) deferToNextDay(campaign *models.Campaign, preview boo
 	tz := loadLocation(campaign.ClockTimezone())
 	windows := effectiveWindows(campaign)
 	if preview {
-		local := time.Now().In(tz)
+		local := s.campaignTime().In(tz)
 		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, tz).AddDate(0, 0, 1)
 		return nextScheduleSlot(midnight, windows, tz)
 	}
-	t := nextScheduleSlot(time.Now().Add(24*time.Hour), windows, tz)
+	t := nextScheduleSlot(s.campaignTime().Add(24*time.Hour), windows, tz)
 	// Add a small jitter so deferred tasks don't all wake at the same instant.
 	return t.Add(time.Minute * time.Duration(randomJitter(0, 30)))
 }
@@ -1027,7 +1027,7 @@ func (s *schedulerService) logCampaignDecisionOnce(ctx context.Context, campaign
 	if metadata == nil {
 		metadata = map[string]interface{}{}
 	}
-	dayStart := time.Now().UTC().Truncate(24 * time.Hour)
+	dayStart := s.campaignTime().UTC().Truncate(24 * time.Hour)
 	day := dayStart.Format("2006-01-02")
 	metadata["day"] = day
 	_, _ = s.campaignLogRepo.CreateLogOnce(ctx, &repository.CampaignLogEntry{

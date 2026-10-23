@@ -25,6 +25,8 @@ type SchedulerService interface {
 }
 
 type schedulerService struct {
+	// campaignClock fixes campaign placement time in tests; nil uses the wall clock.
+	campaignClock        func() time.Time
 	taskRepo             repository.TaskRepository
 	warmupRepo           repository.WarmupRepository
 	campaignProgressRepo repository.CampaignProgressRepository
@@ -56,6 +58,21 @@ type schedulerService struct {
 	// workers says whether a mailbox's worker is heartbeating. Optional/
 	// nil-safe: without it every mailbox is taken to be reachable.
 	workers WorkerLiveness
+}
+
+func (s *schedulerService) campaignTime() time.Time {
+	if s.campaignClock != nil {
+		return s.campaignClock()
+	}
+	return time.Now()
+}
+
+func (s *schedulerService) campaignNotBefore(candidate time.Time) time.Time {
+	return notBeforeAt(candidate, s.campaignTime())
+}
+
+func (s *schedulerService) finalCampaignSlot(candidate time.Time) time.Time {
+	return s.campaignNotBefore(humanizeSeconds(candidate))
 }
 
 // WorkerLiveness reports whether a worker is heartbeating, the check the send

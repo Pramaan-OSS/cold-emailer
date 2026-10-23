@@ -270,7 +270,7 @@ func (s *schedulerService) gateFor(ctx context.Context, p *campaignPass, acct mo
 	// rotation makes it deliverable. Only a SUSTAINED failure gates — "unknown"
 	// and a failure inside the grace window both pass, so a resolver hiccup
 	// never stops a campaign.
-	if p.enforceAuth && acct.DomainAuthBlocked(time.Now(), p.authGrace) {
+	if p.enforceAuth && acct.DomainAuthBlocked(s.campaignTime(), p.authGrace) {
 		return mailboxGate{reason: gateAuth}, 0
 	}
 	// Not in cold rotation. A resting mailbox keeps its warmup traffic and its
@@ -285,7 +285,7 @@ func (s *schedulerService) gateFor(ctx context.Context, p *campaignPass, acct mo
 	if h := s.healthFor(ctx, p, acct.ID); h.known {
 		switch h.state {
 		case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
-			if h.blockedUntil == nil || h.blockedUntil.After(time.Now()) {
+			if h.blockedUntil == nil || h.blockedUntil.After(s.campaignTime()) {
 				return mailboxGate{reason: gateHealth}, 0
 			}
 		case models.WarmupHealthWatch, models.WarmupHealthThrottled:
@@ -297,7 +297,7 @@ func (s *schedulerService) gateFor(ctx context.Context, p *campaignPass, acct mo
 	// and a lead bound to it waits rather than changing address. After the
 	// standing gates, which say more about the mailbox and move its leads.
 	if !s.workerReachable(ctx, p, acct) {
-		return mailboxGate{reason: gateNoWorker, paced: true, reopensAt: time.Now().Add(workerRecheck)}, 0
+		return mailboxGate{reason: gateNoWorker, paced: true, reopensAt: s.campaignTime().Add(workerRecheck)}, 0
 	}
 	if remaining <= 0 {
 		return mailboxGate{reason: gateBudget, paced: true}, 0
@@ -318,7 +318,7 @@ func (s *schedulerService) sendGate(ctx context.Context, p *campaignPass, acct m
 	if gate, ok := p.sendGates[acct.ID]; ok {
 		return gate
 	}
-	now := time.Now()
+	now := s.campaignTime()
 	if acct.OrganizationID == nil {
 		return mailboxGate{reason: gateAdmission}
 	}
@@ -362,7 +362,7 @@ func (s *schedulerService) windowFor(ctx context.Context, p *campaignPass, acct 
 		// Budget the send against the day it will actually land on. When today
 		// is spent, placeWithinBehavior has already walked to a later day, and
 		// that day starts with the mailbox's full cold cap.
-		if !sameLocalDay(openAt, time.Now(), bhv.Loc) {
+		if !sameLocalDay(openAt, s.campaignTime(), bhv.Loc) {
 			remaining = acctLimit
 		}
 		// The day's rolled cold budget, folded in by min(): a persona can only
@@ -384,7 +384,7 @@ func (s *schedulerService) windowFor(ctx context.Context, p *campaignPass, acct 
 	if !wait {
 		return nil, nil, 0, mailboxGate{reason: gateHours, paced: true, reopensAt: open}
 	}
-	if !sameLocalDay(open, time.Now(), loc) {
+	if !sameLocalDay(open, s.campaignTime(), loc) {
 		remaining = acctLimit
 	}
 	return &open, loc, remaining, mailboxGate{}
@@ -400,7 +400,7 @@ func (s *schedulerService) windowFor(ctx context.Context, p *campaignPass, acct 
 // timezones keeps serving the leads whose mailbox is awake.
 func (s *schedulerService) pacedSenders(ctx context.Context, p *campaignPass, accounts []models.Email) repository.PacedSenders {
 	paced := repository.PacedSenders{}
-	now := time.Now()
+	now := s.campaignTime()
 	for _, acct := range accounts {
 		sentToday, err := s.sentTodayFor(ctx, p, acct.ID)
 		if err != nil {
@@ -486,7 +486,7 @@ func (s *schedulerService) gapClearCandidates(ctx context.Context, pass *campaig
 			pass.lastSends[id] = at
 		}
 	}
-	now := time.Now()
+	now := s.campaignTime()
 	clear := make([]AccountCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		if c.OpenAt != nil && c.OpenAt.After(now) {

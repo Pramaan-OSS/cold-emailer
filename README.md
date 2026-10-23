@@ -1,4 +1,4 @@
-[![CI](https://github.com/Pramaan-OSS/cold-email/actions/workflows/ci.yml/badge.svg)](https://github.com/Pramaan-OSS/cold-email/actions/workflows/ci.yml)
+[![CI](https://github.com/Pramaan-OSS/cold-emailer/actions/workflows/ci.yml/badge.svg)](https://github.com/Pramaan-OSS/cold-emailer/actions/workflows/ci.yml)
 
 # Cold Email
 

@@ -2,9 +2,32 @@ package repository
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+func TestResidencyDistinguishesNewFromUnknownAssignments(t *testing.T) {
+	now := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
+	past, future := now.Add(-time.Hour), now.Add(time.Second)
+	for _, tc := range []struct {
+		name string
+		at   *time.Time
+		want time.Duration
+	}{
+		{"unknown", nil, 0},
+		{"established", &past, time.Hour},
+		{"just assigned", &now, time.Nanosecond},
+		{"database clock ahead", &future, time.Nanosecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := MailboxPlacementState{AssignedAt: tc.at}
+			if got := state.Residency(now); got != tc.want {
+				t.Fatalf("Residency() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestPlacementImbalancedUsesExistingFleetHeadroom(t *testing.T) {
 	tests := []struct {

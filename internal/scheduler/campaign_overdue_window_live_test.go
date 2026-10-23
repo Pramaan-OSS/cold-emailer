@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/pramaan-oss/cold-email/internal/models"
 )
 
 // A campaign's sending window is a promise about when mail leaves, and an
@@ -57,44 +59,57 @@ func overdueFollowUp(t *testing.T, pool *pgxpool.Pool, f *liveFixture, step1, co
 // hhmm renders an instant as the campaigns table's time-of-day.
 func hhmm(t time.Time) string { return t.UTC().Format("15:04") }
 
+// A time-relative fixture can span midnight. Legacy start/end fields only
+// describe same-day windows, so use the supported per-day intervals instead.
+func setOverdueTestWindow(t *testing.T, pool *pgxpool.Pool, campaign uuid.UUID, opened, closed time.Time) models.ScheduleWindows {
+	t.Helper()
+	start := opened.UTC().Hour()*60 + opened.UTC().Minute()
+	end := closed.UTC().Hour()*60 + closed.UTC().Minute()
+	var windows models.ScheduleWindows
+	for day := range windows {
+		if start < end {
+			windows[day] = []models.TimeInterval{{Start: start, End: end}}
+		} else {
+			windows[day] = []models.TimeInterval{{Start: start, End: 1440}}
+			if end > 0 {
+				windows[day] = append(windows[day], models.TimeInterval{Start: 0, End: end})
+			}
+		}
+	}
+	if _, err := pool.Exec(context.Background(), `UPDATE campaigns SET schedule_windows = $2 WHERE id = $1`, campaign, windows); err != nil {
+		t.Fatalf("set the window: %v", err)
+	}
+	return windows
+}
+
 // An overdue follow-up must wait for the window to reopen, not go out the
 // moment the chain happens to wake up outside it.
 func TestLiveOverdueFollowUpWaitsForTheWindowToReopen(t *testing.T) {
-	handle, pool := liveDB(t)
-	f := newLiveFixture(t, pool, "UTC")
-	ctx := context.Background()
-	step1, contact := liveLead(t, pool, f.campaign)
+	for _, hour := range []int{15, 1} {
+		now := time.Date(2025, 10, 23, hour, 0, 0, 0, time.UTC)
+		t.Run(now.Format("15:04"), func(t *testing.T) {
+			handle, pool := liveDB(t)
+			f := newLiveFixture(t, pool, "UTC")
+			ctx := context.Background()
+			step1, contact := liveLead(t, pool, f.campaign)
+			opened, closed := now.Add(-3*time.Hour), now.Add(-time.Hour)
+			windows := setOverdueTestWindow(t, pool, f.campaign, opened, closed)
+			overdueFollowUp(t, pool, f, step1, contact, now.Add(-2*time.Hour))
 
-	// A window that closed an hour ago, and a step 1 that went out inside it.
-	now := time.Now().UTC()
-	opened, closed := now.Add(-3*time.Hour), now.Add(-1*time.Hour)
-	if _, err := pool.Exec(ctx,
-		`UPDATE campaigns SET start_time = $2, end_time = $3, days = 127 WHERE id = $1`,
-		f.campaign, hhmm(opened), hhmm(closed)); err != nil {
-		t.Fatalf("set the window: %v", err)
-	}
-	overdueFollowUp(t, pool, f, step1, contact, now.Add(-2*time.Hour))
-
-	at, pair, _, err := liveScheduler(t, handle, pool).CalculateNextCampaignTime(ctx, f.campaign)
-	if pair != nil && err == nil {
-		t.Fatalf("the scheduler authorised a send at %s, %s after the window closed at %s",
-			hhmm(now), time.Since(closed).Round(time.Minute), hhmm(closed))
-	}
-	if !errors.Is(err, ErrCampaignDeferred) {
-		t.Fatalf("want a deferral, got %v", err)
-	}
-	// The wake-up it parks is a future moment inside the window. Which DAY is
-	// deliberately not asserted: the distribution curve can push an early
-	// window's candidate past that day's close and cost it a day, which is its
-	// own thing and not what this test is about.
-	if !at.After(now) {
-		t.Fatalf("deferred to %s, which is not in the future", at.UTC().Format(time.RFC3339))
-	}
-	openMin := opened.Hour()*60 + opened.Minute()
-	closeMin := closed.Hour()*60 + closed.Minute()
-	if m := at.UTC().Hour()*60 + at.UTC().Minute(); m < openMin || m > closeMin {
-		t.Fatalf("deferred to %s, which is outside the %s-%s window it must wait for",
-			at.UTC().Format(time.RFC3339), hhmm(opened), hhmm(closed))
+			at, pair, _, err := liveSchedulerAt(t, handle, pool, now).CalculateNextCampaignTime(ctx, f.campaign)
+			if pair != nil && err == nil {
+				t.Fatalf("the scheduler authorised a send at %s, after the window closed at %s", hhmm(now), hhmm(closed))
+			}
+			if !errors.Is(err, ErrCampaignDeferred) {
+				t.Fatalf("want a deferral, got %v", err)
+			}
+			if !at.After(now) || !at.Before(now.AddDate(0, 0, 8)) {
+				t.Fatalf("deferred to %s, outside the fixed clock's eight-day schedule horizon", at.UTC().Format(time.RFC3339))
+			}
+			if !nextScheduleSlot(at, windows, time.UTC).Equal(at) {
+				t.Fatalf("deferred to %s, outside the %s-%s window", at.UTC().Format(time.RFC3339), hhmm(opened), hhmm(closed))
+			}
+		})
 	}
 }
 
@@ -108,11 +123,7 @@ func TestLiveOverdueFollowUpStillSendsInsideTheWindow(t *testing.T) {
 
 	// A window that opened two hours ago and is open for another two.
 	now := time.Now().UTC()
-	if _, err := pool.Exec(ctx,
-		`UPDATE campaigns SET start_time = $2, end_time = $3, days = 127 WHERE id = $1`,
-		f.campaign, hhmm(now.Add(-2*time.Hour)), hhmm(now.Add(2*time.Hour))); err != nil {
-		t.Fatalf("set the window: %v", err)
-	}
+	setOverdueTestWindow(t, pool, f.campaign, now.Add(-2*time.Hour), now.Add(2*time.Hour))
 	overdueFollowUp(t, pool, f, step1, contact, now.Add(-90*time.Minute))
 
 	_, pair, _, err := liveScheduler(t, handle, pool).CalculateNextCampaignTime(ctx, f.campaign)

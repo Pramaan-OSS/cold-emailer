@@ -157,8 +157,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.0
+      - name: Read pinned Rust toolchain
+        id: rust
+        run: python3 -c 'import tomllib; print("toolchain=" + tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])' >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: rustfmt
       - uses: actions/cache@v4
         with:
@@ -167,6 +171,9 @@ jobs:
             ~/.cargo/git
             tracking/target
           key: rust-${{ runner.os }}-${{ hashFiles('tracking/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: |
+          rustc --version
+          cargo --version
       - run: cargo fmt --manifest-path tracking/Cargo.toml --check
       - run: cargo check --manifest-path tracking/Cargo.toml --locked
       - run: cargo test --manifest-path tracking/Cargo.toml --locked -- --include-ignored

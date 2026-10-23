@@ -199,6 +199,14 @@ func liveScheduler(t *testing.T, handle *db.DB, pool *pgxpool.Pool) SchedulerSer
 	return s
 }
 
+// liveSchedulerAt keeps database integration real while freezing placement time.
+func liveSchedulerAt(t *testing.T, handle *db.DB, pool *pgxpool.Pool, at time.Time) SchedulerService {
+	t.Helper()
+	s := liveScheduler(t, handle, pool).(*schedulerService)
+	s.campaignClock = func() time.Time { return at }
+	return s
+}
+
 // scheduleSlot runs a scheduling pass and returns the computed slot. A pass
 // whose slot sits beyond the not-due grace now (correctly) reports
 // ErrCampaignDeferred instead of handing back a sendable pair; for these
@@ -875,15 +883,12 @@ func TestLiveSendTimeOptimizationOffLeavesTheSlotAlone(t *testing.T) {
 	handle, pool := liveDB(t)
 	f := newLiveFixture(t, pool, "UTC")
 	f.setContactTimezone(t, "Asia/Tokyo")
-
-	// No settings row at all — the repository hands back the defaults.
-	at, _ := scheduleSlot(t, liveScheduler(t, handle, pool), f.campaign)
-
-	// The campaign window is always open, so an unoptimized slot is imminent.
-	// A snap to Tokyo's 9am would push it hours out.
-	if time.Until(at) > 2*time.Hour {
-		t.Errorf("slot %s is %v out; optimization must stay off by default",
-			at, time.Until(at).Truncate(time.Minute))
+	// 15:00 UTC is midnight in Tokyo. Recipient optimization would wait nine
+	// hours, while unrelated morning/lunch pacing cannot affect this fixture.
+	now := time.Date(2025, 10, 23, 15, 0, 0, 0, time.UTC)
+	at, _ := scheduleSlot(t, liveSchedulerAt(t, handle, pool, now), f.campaign)
+	if delay := at.Sub(now); delay < 0 || delay > 2*time.Hour {
+		t.Errorf("slot %s is %v from the fixed clock; optimization must stay off by default", at, delay)
 	}
 }
 
