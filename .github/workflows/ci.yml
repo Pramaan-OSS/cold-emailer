@@ -26,12 +26,12 @@ jobs:
       matrix:
         check: [lint, typecheck, build]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: .go-version
           cache: false
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
@@ -77,19 +77,19 @@ jobs:
       COLD_EMAIL_TEST_REDIS: redis://127.0.0.1:6379/0
       TEXTCHECK_TEST_REDIS_URL: redis://127.0.0.1:6379/1
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: .go-version
           cache: false
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', '.go-version') }}
       - run: go mod download
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version-file: .python-version
       - run: |
@@ -111,11 +111,11 @@ jobs:
       matrix:
         check: [lint, typecheck, test, build]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.26.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Read pinned Rust toolchain
         id: rust
         run: python3 -c 'import tomllib; print("toolchain=" + tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])' >> "$GITHUB_OUTPUT"
@@ -164,7 +164,7 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.toolchain }}
           components: rustfmt
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -182,8 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
         with:
           path: |
             realtime/deps
