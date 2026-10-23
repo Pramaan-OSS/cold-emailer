@@ -9,7 +9,7 @@ import (
 	"github.com/pramaan-oss/cold-email/internal/models"
 )
 
-func TestLiveImportManagedConsentKeepsRestrictionsButCannotResumeSourceHandles(t *testing.T) {
+func TestLiveImportDoesNotRestoreRemovedManagedConsentTables(t *testing.T) {
 	svc, pool := liveImportService(t)
 	dest := newTenantFixture(t, pool)
 	ctx := context.Background()
@@ -26,14 +26,14 @@ func TestLiveImportManagedConsentKeepsRestrictionsButCannotResumeSourceHandles(t
 			if _, err := svc.ImportFrom(ctx, dest.org, archive, ImportOptions{Conflict: models.OrgImportConflictOverwrite, ActorUserID: dest.owner}, nil); err != nil {
 				t.Fatal(err)
 			}
-			var got string
-			var cleared bool
-			query := `SELECT consent_state, instance_id IS NULL AND remote_id IS NULL AND session_hash IS NULL AND planned_account_id IS NULL FROM ` + table + ` WHERE id=$1 AND organization_id=$2`
-			if err := pool.QueryRow(ctx, query, id, dest.org).Scan(&got, &cleared); err != nil {
+			// These upstream tables were removed from the template. Importing an
+			// old archive must not restore consent handles or recreate the tables.
+			var absent bool
+			if err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NULL`, "public."+table).Scan(&absent); err != nil {
 				t.Fatal(err)
 			}
-			if got != state || !cleared {
-				t.Fatalf("%s: state=%s, handles cleared=%v", table, got, cleared)
+			if !absent {
+				t.Fatalf("import restored removed table %s", table)
 			}
 		}
 	}

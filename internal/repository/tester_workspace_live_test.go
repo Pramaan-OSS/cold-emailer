@@ -84,8 +84,13 @@ func TestLiveTesterWorkspaceProvisioning(t *testing.T) {
 		t.Fatalf("revoke = %v, %v", cleared, err)
 	}
 	sub, err = subs.GetByOrganizationID(ctx, org.ID)
+	// The database and application clocks may differ briefly on local VMs.
+	deadline := time.Now().Add(2 * time.Second)
+	for err == nil && sub.IsManaged() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if err != nil || sub.HasProductPlan() {
-		t.Fatalf("revocation left paid access: %v, %v", sub, err)
+		t.Fatalf("revocation retained the tester grant: %v, %v", sub, err)
 	}
 }
 

@@ -247,22 +247,17 @@ func TestLiveMailboxSourcesSigninConversions(t *testing.T) {
 		}
 	})
 
-	t.Run("a mailbox managed elsewhere is never offered or moved", func(t *testing.T) {
-		box := signin("managed-" + f.org.String()[:8] + "@conv.io")
-		if _, err := pool.Exec(ctx, `INSERT INTO cloud_link_mailboxes (email_account_id, remote_id, managed) VALUES ($1, $2, true)`, box, uuid.New()); err != nil {
-			t.Fatal(err)
+	t.Run("removed hosted mailbox metadata is not required for a local move", func(t *testing.T) {
+		box := signin("local-" + f.org.String()[:8] + "@conv.io")
+		var absent bool
+		if err := pool.QueryRow(ctx, `SELECT to_regclass('public.cloud_link_mailboxes') IS NULL`).Scan(&absent); err != nil || !absent {
+			t.Fatalf("removed hosted mailbox table exists: %v", err)
 		}
-		list, _ := emails.ListSigninRetiring(ctx, f.org)
-		for _, m := range list {
-			if m.ID == box {
-				t.Fatal("a managed mailbox was offered for the move")
-			}
+		if ok, xerr := emails.ConvertToDelegated(ctx, f.org, box, models.InboxProviderGoogle, g.ID, "x", ""); xerr != nil || !ok {
+			t.Fatalf("local move without hosted metadata: %v, %v", ok, xerr)
 		}
-		if ok, _ := emails.ConvertToDelegated(ctx, f.org, box, models.InboxProviderGoogle, g.ID, "x", ""); ok {
-			t.Fatal("a managed mailbox was moved onto the grant")
-		}
-		if ref, _ := emails.FindInOrganization(ctx, f.org, "managed-"+f.org.String()[:8]+"@conv.io"); ref == nil || !ref.Managed {
-			t.Fatalf("ref = %+v", ref)
+		if ref, xerr := emails.FindInOrganization(ctx, f.org, "local-"+f.org.String()[:8]+"@conv.io"); xerr != nil || ref == nil || ref.Managed {
+			t.Fatalf("local mailbox reference: %+v, %v", ref, xerr)
 		}
 	})
 

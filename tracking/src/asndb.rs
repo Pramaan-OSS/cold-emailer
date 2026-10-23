@@ -15,10 +15,8 @@ use maxminddb::{geoip2, Reader};
 use std::io::Read;
 use std::net::IpAddr;
 
-
 /// The whole download, not one request. Nothing reads the database until it
 /// lands, so this is a boot budget; GeoLite2-ASN is around 12 MB.
-
 
 /// What a misconfigured URL is allowed to cost in memory.
 const MAX_DATABASE_BYTES: u64 = 128 << 20;
@@ -49,7 +47,11 @@ impl AsnDb {
         if let Some(db) = Self::open(path) {
             return Some(db);
         }
-        if !url.trim().is_empty() { tracing::warn!("Remote ASN database downloads are unavailable; mount a local database file."); }
+        if !url.trim().is_empty() {
+            tracing::warn!(
+                "Remote ASN database downloads are unavailable; mount a local database file."
+            );
+        }
         None
     }
 

@@ -7,17 +7,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Connecting a paid verifier has to reopen the addresses the built-in check
-// could not resolve. Without that, a workspace that connects one because the
-// in-house probe returned `unknown` waits out the 30-day shelf life before a
-// single credit is spent, and the connection card keeps saying degraded from
-// whatever the provider answered on the first pass.
-//
-// Run against the dev stack:
-//
-//	COLD_EMAIL_TEST_DB=postgres://coldemail:coldemail@localhost:15432/coldemail_dev?sslmode=disable \
-//	  go test ./internal/repository/ -run LiveVerificationReopen -v
-func TestLiveVerificationReopenOnProviderConnect(t *testing.T) {
+// Legacy provider rows are not connected verifiers in this template. They must
+// not reopen recent verdicts or schedule another paid check. Pramaan checks and
+// explicit verification requests are covered separately.
+func TestLiveRemovedProviderConnectionDoesNotReopenVerification(t *testing.T) {
 	handle, pool := liveContactDB(t)
 	f := newSharedOrgFixture(t, pool)
 	ctx := context.Background()
@@ -80,8 +73,8 @@ func TestLiveVerificationReopenOnProviderConnect(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM integration_connections WHERE id = $1`, conn)
 	})
 
-	if !candidates()[stale] {
-		t.Fatal("connecting a verifier did not reopen the built-in unknown verdict")
+	if candidates()[stale] {
+		t.Fatal("a removed provider connection reopened a verdict instead of requiring a Pramaan check")
 	}
 	if candidates()[paid] {
 		t.Fatal("a verdict the paid verifier already produced was reopened, spending a credit for nothing")

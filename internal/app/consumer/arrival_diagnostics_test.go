@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/pramaan-oss/cold-email/internal/errx"
 	"github.com/pramaan-oss/cold-email/internal/models"
 	"github.com/pramaan-oss/cold-email/internal/observability/arrivaldiag"
 	"github.com/pramaan-oss/cold-email/internal/repository"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type diagnosticArrivalStub struct {

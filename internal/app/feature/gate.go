@@ -96,7 +96,6 @@ type featureGateService struct {
 	overrides LimitOverrideReader
 }
 
-
 // LimitOverrideReader reads the operator override row for an organization.
 // Satisfied by the organization repository.
 type LimitOverrideReader interface {
@@ -110,7 +109,6 @@ func NewService(subRepo repository.SubscriptionRepository, planRepo repository.P
 		selfHost: config.BillingProvider() == "none",
 	}
 }
-
 
 // WireLimitOverrides attaches the override reader after construction.
 func (s *featureGateService) WireLimitOverrides(r LimitOverrideReader) { s.overrides = r }

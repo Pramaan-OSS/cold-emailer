@@ -17,8 +17,22 @@ let host: HTMLDivElement;
 const consentToken = "c".repeat(43);
 const description = () => ({ request: { client_name: "Fixture laptop", instance_url: "http://localhost:8080", status: "pending", expires_at: new Date(Date.now() + 60000).toISOString(), consent_token: consentToken }, requested_access: "Your live platform administrator permissions through a separate revocable session", admin_permissions: 16 });
 
+function testStorage(): Storage {
+    const values = new Map<string, string>();
+    return {
+        get length() { return values.size; },
+        clear: () => values.clear(),
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => { values.set(key, value); },
+        removeItem: (key) => { values.delete(key); },
+        key: (index) => [...values.keys()][index] ?? null,
+    };
+}
+
 beforeEach(async () => {
     vi.clearAllMocks();
+    vi.stubGlobal("localStorage", testStorage());
+    vi.stubGlobal("sessionStorage", testStorage());
     localStorage.clear(); sessionStorage.clear();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     api.describe.mockResolvedValue(description());

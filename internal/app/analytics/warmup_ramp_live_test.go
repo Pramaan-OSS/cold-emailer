@@ -58,13 +58,14 @@ func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFix
 		f.user, "ramp-"+f.user.String()[:8]+"@test.local")
 	exec(`INSERT INTO organizations (id, name, slug, owner_user_id) VALUES ($1, 'Ramp Test', $2, $3)`,
 		f.org, "ramp-"+f.org.String()[:8], f.user)
+	exec(`UPDATE organizations SET risk_state = 'trusted' WHERE id = $1`, f.org)
 	exec(`INSERT INTO email_accounts (id, user_id, organization_id, email, name, signature_plain,
 	          signature_html, provider, status, campaign_limit, min_wait_time, timezone,
 	          warmup, warmup_base, warmup_increase, warmup_max)
 	      VALUES ($1, $2, $3, $4, 'Ramp', '', '', 'smtp_imap', 'active', 50, 600, 'UTC',
 	              $5, $6, $7, $8)`,
 		f.mailbox, f.user, f.org, "ramp-"+f.mailbox.String()[:8]+"@test.local",
-		time.Now().Add(-time.Duration(daysWarming)*24*time.Hour), base, increase, max)
+		time.Now().UTC().Add(-time.Duration(daysWarming)*24*time.Hour-6*time.Hour), base, increase, max)
 	exec(`INSERT INTO email_accounts (id, user_id, organization_id, email, name, signature_plain,
 	          signature_html, provider, status, campaign_limit, min_wait_time, timezone)
 	      VALUES ($1, $2, $3, $4, 'Partner', '', '', 'gmail', 'active', 50, 600, 'UTC')`,
@@ -90,6 +91,7 @@ func newRampFixture(t *testing.T, daysWarming, base, increase, max int) *rampFix
 		}
 	})
 
+	exec(`UPDATE email_accounts SET test_mode = NULL WHERE organization_id = $1`, f.org)
 	enc, err := encrypt.NewEncrypter([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
 		t.Fatalf("encrypter: %v", err)
@@ -110,7 +112,7 @@ func (f *rampFixture) placement(t *testing.T, hoursAgo int) {
 		`INSERT INTO warmup_spam_reports (id, reporter_account_id, reported_account_id, message_id, report_type, created_at)
 		 VALUES (gen_random_uuid(), $1, $2, $3, 'spam_placement', $4)`,
 		f.gmail, f.mailbox, "msg-"+uuid.New().String(),
-		time.Now().Add(-time.Duration(hoursAgo)*time.Hour)); err != nil {
+		time.Now().UTC().Add(-time.Duration(hoursAgo)*time.Hour)); err != nil {
 		t.Fatalf("record placement: %v", err)
 	}
 }
@@ -252,6 +254,7 @@ func TestLiveWarmupTargetIsCappedByReachablePartners(t *testing.T) {
 	})
 	exec(`INSERT INTO organizations (id, name, slug, owner_user_id) VALUES ($1, 'Ramp partners', $2, $3)`,
 		other, "ramp-p-"+other.String()[:8], f.user)
+	exec(`UPDATE organizations SET risk_state = 'trusted' WHERE id = $1`, other)
 	ids := []uuid.UUID{f.mailbox}
 	for i := 0; i < 3; i++ {
 		id := uuid.New()
@@ -261,6 +264,7 @@ func TestLiveWarmupTargetIsCappedByReachablePartners(t *testing.T) {
 			id, f.user, other, "ramp-p-"+id.String()[:8]+"@test.local")
 		ids = append(ids, id)
 	}
+	exec(`UPDATE email_accounts SET test_mode = NULL WHERE organization_id = $1`, other)
 	for _, id := range ids {
 		exec(`INSERT INTO warmup_pool_participants (pool_id, email_account_id, participant_role, health_state)
 		      VALUES ($1, $2, 'sender_receiver', 'healthy')`, models.WarmupPoolPremiumID, id)

@@ -93,7 +93,6 @@ func (s *JobsService) ingestNewEmail(ctx context.Context, e *models.JobEventNewE
 		}
 	}
 
-
 	// Normal email processing
 	if err := s.UniboxRepository.CreateEntry(ctx, e.UserID, e.Message); err != nil {
 		if s.dropForDeletedMailbox(ctx, e.UserID, e.Message.EmailID, err) {

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pramaan-oss/cold-email/internal/models"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/pramaan-oss/cold-email/internal/models"
 )
 
 func TestArrivalDiagnosticsShutdownBetweenPassesFlushesReturnedWork(t *testing.T) {

@@ -40,7 +40,7 @@ const (
 	ErrIDCloudUnavailable = "domain_redirect_cloud_unavailable"
 	// ErrIDCloudUnreachable refuses a move or removal Cloud could not be told about.
 	ErrIDCloudUnreachable = "domain_redirect_cloud_unreachable"
-	ErrIDLimit = "domain_redirect_limit"
+	ErrIDLimit            = "domain_redirect_limit"
 	// ErrIDRemoteNotFound is Cloud's answer for a redirect the linked instance does not have there.
 	ErrIDRemoteNotFound = "domain_redirect_not_found"
 )

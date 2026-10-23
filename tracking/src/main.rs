@@ -1,6 +1,5 @@
 mod abuse;
 mod asndb;
-mod remoteconfig;
 mod config;
 mod events;
 mod handlers;
@@ -10,6 +9,7 @@ mod kafka;
 mod links;
 mod nats;
 mod observability;
+mod remoteconfig;
 
 mod producer;
 mod redirects;

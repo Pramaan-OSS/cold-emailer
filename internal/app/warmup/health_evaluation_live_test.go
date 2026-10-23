@@ -195,9 +195,9 @@ func deliverWarmup(t *testing.T, handle *db.DB, sender, recipient uuid.UUID, off
 		ids[i] = "<" + uuid.NewString() + "@test.local>"
 	}
 	execSQL(t, handle.Pool, `
-		INSERT INTO warmup_received (email_account_id, internal_id, message_id, sender_account_id, created_at)
-		SELECT $1, gen_random_uuid(), m, $2, NOW() - $3::interval FROM unnest($4::text[]) AS m`,
-		recipient, sender, offset, ids)
+		INSERT INTO warmup_received (email_account_id, internal_id, message_id, sender_account_id, created_at, first_landing)
+		SELECT $1, gen_random_uuid(), m, $2, NOW() - $3::interval, CASE WHEN $5 THEN 'spam' ELSE 'inbox' END FROM unnest($4::text[]) AS m`,
+		recipient, sender, offset, ids, junked)
 	if junked {
 		execSQL(t, handle.Pool, `
 			INSERT INTO warmup_spam_reports (reporter_account_id, reported_account_id, message_id, report_type, created_at)

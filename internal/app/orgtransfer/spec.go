@@ -837,9 +837,8 @@ var Tables = []Table{
 	{
 		Name: "email_account_errors", Group: models.OrgDataGroupSending,
 		Scope:            `email_account_id IN ` + orgMailboxes,
-		ResetOnImport:    []string{"operation", "observation_source", "received_at"},
 		ResetOnOverwrite: true,
-		Note:             "Historical reports travel; operation and clock provenance reset to unknown on the destination.",
+		Note:             "Historical reports travel using the columns in the local template schema.",
 	},
 	{
 		Name: "tracked_links", Group: models.OrgDataGroupSending,

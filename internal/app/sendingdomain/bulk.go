@@ -67,8 +67,8 @@ type BulkTracking struct {
 // BulkRedirectTo is one domain's root redirect after a bulk setup.
 type BulkRedirectTo struct {
 	TargetURL string `json:"target_url,omitempty"`
-	Via      string `json:"via"`
-	Verified bool   `json:"verified"`
+	Via       string `json:"via"`
+	Verified  bool   `json:"verified"`
 	// Reviewed means the vendor's staff apply the forwarding later.
 	Reviewed bool   `json:"reviewed,omitempty"`
 	Error    string `json:"error,omitempty"`

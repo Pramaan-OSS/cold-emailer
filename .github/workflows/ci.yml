@@ -1,31 +1,54 @@
-name: Local template checks
-on: [push, pull_request]
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  PRAMAAN_API_KEY: ""
+  PRAMAAN_FAKE: "1"
+  TZ: UTC
+  DO_NOT_TRACK: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
 jobs:
-  go:
+  go-checks:
+    name: go-${{ matrix.check }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, typecheck, build]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
-      - run: go test ./...
-  web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+          go-version-file: .go-version
+          cache: false
+      - uses: actions/cache@v4
         with:
-          version: 10.26.2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: pnpm --dir web install --frozen-lockfile
-      - run: pnpm --dir web typecheck
-      - run: pnpm --dir web test:run --maxWorkers=4
-  database:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', '.go-version') }}
+      - run: go mod download
+      - if: matrix.check == 'lint'
+        run: |
+          test -z "$(gofmt -l cmd internal)"
+          bash scripts/check-migrations.sh
+      - if: matrix.check == 'typecheck'
+        run: go vet ./...
+      - if: matrix.check == 'build'
+        run: go build ./cmd/...
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -35,18 +58,134 @@ jobs:
           POSTGRES_DB: coldemail
         ports: [5432:5432]
         options: >-
-          --health-cmd="pg_isready -U coldemail"
-          --health-interval=5s --health-timeout=5s --health-retries=10
+          --health-cmd "pg_isready -U coldemail"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      PRIMARY_DB: postgres://coldemail:local-test-only@localhost:5432/coldemail?sslmode=disable
-      COLD_EMAIL_TEST_DB: postgres://coldemail:local-test-only@localhost:5432/coldemail?sslmode=disable
+      PRIMARY_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail?sslmode=disable
+      COLD_EMAIL_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail?sslmode=disable
+      SEED_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail_seed?sslmode=disable
+      INSTANCE_CHECK_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail?sslmode=disable
+      COLD_EMAIL_UPGRADE_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail_upgrade?sslmode=disable
+      COLD_EMAIL_CONTENT_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail_content?sslmode=disable
+      COLD_EMAIL_ATTEMPT_TEST_DB: postgres://coldemail:local-test-only@127.0.0.1:5432/coldemail_attempt?sslmode=disable
+      COLD_EMAIL_TEST_REDIS: redis://127.0.0.1:6379/0
+      TEXTCHECK_TEST_REDIS_URL: redis://127.0.0.1:6379/1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
-      - run: go run ./cmd/migrate
+          go-version-file: .go-version
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', '.go-version') }}
+      - run: go mod download
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - run: |
+          psql "$PRIMARY_DB" -c 'CREATE DATABASE coldemail_seed;'
+          psql "$PRIMARY_DB" -c 'CREATE DATABASE coldemail_upgrade;'
+          psql "$PRIMARY_DB" -c 'CREATE DATABASE coldemail_content;'
+          psql "$PRIMARY_DB" -c 'CREATE DATABASE coldemail_attempt;'
+          go run ./cmd/migrate
+      - run: go test -p 1 -json ./... -count=1
+      - run: |
+          python3 -m unittest discover -s scripts -p 'test*.py'
+          python3 scripts/test-configure-local.py
+  frontend:
+    name: frontend-${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, typecheck, test, build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: |
+            web/pnpm-lock.yaml
+            admin/pnpm-lock.yaml
+            forms/pnpm-lock.yaml
+            site/pnpm-lock.yaml
+            qa/pnpm-lock.yaml
+      - run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir admin install --frozen-lockfile
+          pnpm --dir forms install --frozen-lockfile
+          pnpm --dir site install --frozen-lockfile
+          pnpm --dir qa install --frozen-lockfile
+      - if: matrix.check == 'lint'
+        run: |
+          pnpm --dir web lint
+          pnpm --dir admin lint
+          pnpm --dir forms lint
+      - if: matrix.check == 'typecheck'
+        run: |
+          pnpm --dir web typecheck
+          pnpm --dir admin typecheck
+          pnpm --dir forms typecheck
+          pnpm --dir qa typecheck
+      - if: matrix.check == 'test'
+        run: |
+          pnpm --dir web test:run --maxWorkers=4
+          pnpm --dir admin test:run --maxWorkers=4
+      - if: matrix.check == 'build'
+        run: |
+          pnpm --dir web build
+          pnpm --dir admin build
+          pnpm --dir forms build
+          pnpm --dir site build
+  tracking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tracking/target
+          key: rust-${{ runner.os }}-${{ hashFiles('tracking/Cargo.lock', 'rust-toolchain.toml') }}
+      - run: cargo fmt --manifest-path tracking/Cargo.toml --check
+      - run: cargo check --manifest-path tracking/Cargo.toml --locked
+      - run: cargo test --manifest-path tracking/Cargo.toml --locked -- --include-ignored
+      - run: cargo build --manifest-path tracking/Cargo.toml --locked
+  realtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            realtime/deps
+            realtime/_build
+          key: elixir-${{ runner.os }}-${{ hashFiles('realtime/mix.lock') }}
       - run: >-
-          go test -p 1 ./internal/repository ./internal/app/analytics ./internal/scheduler ./internal/tasks ./internal/app/orgtransfer
-          -run 'TestLive(AccountStatusPage|WarmupPartner|WarmupDispatch|VerificationBacklog|Dashboard|Task|MailboxSend|BookedSends|ArrivalDiagnostics|EmailMessageMap|UnknownResolution|DefinitiveConflict|SendRecoveryResolution|UnstartedDispatch|PriorDefinitive|AuthenticationRepair|ConcurrentAuthentication|ExpandedConflict|ImportOverwrites|JobRun|Monitoring|ParkedCampaign|ClaimedMailbox|CampaignsSharing|LostMailbox)'
-          -count=1
+          docker run --rm -v "$PWD/realtime:/app" -w /app
+          -e PRAMAAN_API_KEY= -e PRAMAAN_FAKE=1 -e DO_NOT_TRACK=1
+          elixir:1.18-otp-27-alpine@sha256:dcb48d7210897f6453584f050147459417276359fa9c366dae0fbc212e5a862b
+          sh -ec 'mix local.hex --force; mix local.rebar --force;
+          mix deps.get --check-locked; mix format --check-formatted;
+          MIX_ENV=test mix test; MIX_ENV=prod mix compile'

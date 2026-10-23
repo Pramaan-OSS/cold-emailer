@@ -2,6 +2,12 @@ package repository
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pramaan-oss/cold-email/internal/infrastructure/db"
+	"net/url"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,13 +106,35 @@ func TestLiveMonitoringQueueSettlementAndFailureSemantics(t *testing.T) {
 }
 
 func TestLiveMonitoringOptionalSchemaEmptyAndCollectionTimeout(t *testing.T) {
-	_, pool := liveContactDB(t)
+	_, admin := liveContactDB(t)
+	name := "monitoring_optional_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	quoted := pgx.Identifier{name}.Sanitize()
+	if _, err := admin.Exec(t.Context(), "CREATE DATABASE "+quoted); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE "+quoted+" WITH (FORCE)") })
+	u, err := url.Parse(os.Getenv("COLD_EMAIL_TEST_DB"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	if err := db.RunMigrations(u.String()); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(t.Context(), u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(t.Context(), "ALTER TABLE public.sync_arrival_outbox RENAME TO fixture_original_sync_arrival_outbox"); err != nil {
+		t.Fatal(err)
+	}
 	requireSchemaVersion(t, pool, 277)
 	r := NewMonitoringRepository(pool)
 	now := time.Now().UTC()
 	absent := collectMonitoring(t, r, "arrivals", now)
 	if absent.Reason != "schema_absent" {
-		t.Skip("optional schema already exists")
+		t.Fatalf("expected missing optional schema, got %s", absent.Reason)
 	}
 	if _, err := pool.Exec(t.Context(), `CREATE TABLE public.sync_arrival_outbox(email_id uuid,organization_id uuid,created_at timestamptz,retry_at timestamptz,locked_until timestamptz,stage int)`); err != nil {
 		t.Fatal(err)

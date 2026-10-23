@@ -35,7 +35,6 @@ defmodule Realtime.Application do
 
         # Connection tracker
         {Realtime.Connections, []}
-
       ] ++ event_bridge_children()
 
     opts = [strategy: :one_for_one, name: Realtime.Supervisor]

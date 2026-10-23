@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/pramaan-oss/cold-email/internal/app/cipher"
 	"github.com/pramaan-oss/cold-email/internal/models"
 	"github.com/pramaan-oss/cold-email/internal/observability/arrivaldiag"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type countedArrivalCipher struct {

@@ -1,4 +1,4 @@
-use crate::remoteconfig::{SecretsManagerClient, ParameterStore};
+use crate::remoteconfig::{ParameterStore, SecretsManagerClient};
 use std::env;
 use tracing::info;
 
@@ -287,7 +287,9 @@ impl Config {
 
     /// Load configuration from remote configuration only (legacy method for backwards compatibility)
     #[allow(dead_code)]
-    pub async fn from_remote(env: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> { Self::load().await }
+    pub async fn from_remote(env: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::load().await
+    }
 
     /// Get required config value - env first, then AWS SSM if enabled
     async fn get_required(

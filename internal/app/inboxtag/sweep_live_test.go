@@ -106,6 +106,8 @@ func newSweepFixture(t *testing.T) *sweepFixture {
 	// One conversation held by both mailboxes is still one thread.
 	f.message(1, "inbox", "stale-shared", day(9), "", "")
 	f.message(0, "sent", "stale-shared", day(8), "", "")
+	// Refresh row counts after bulk loading; a new database has no statistics yet.
+	f.exec(`ANALYZE unibox_emails; ANALYZE inbox_tag_results; ANALYZE email_accounts`)
 	return f
 }
 

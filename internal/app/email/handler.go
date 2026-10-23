@@ -374,7 +374,6 @@ func (s *emailService) Delete(ctx context.Context, orgID, emailAccountID string)
 		return xerr
 	}
 
-
 	// The refund travels inside the delete's transaction: the foreign key only
 	// nulls worker_id, so a worker not credited here stays charged for a
 	// mailbox that no longer exists, unrepairably.

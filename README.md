@@ -1,3 +1,5 @@
+[![CI](https://github.com/Pramaan-OSS/cold-email/actions/workflows/ci.yml/badge.svg)](https://github.com/Pramaan-OSS/cold-email/actions/workflows/ci.yml)
+
 # Cold Email
 
 A self-hosted outreach workspace with local accounts, contacts, campaigns, inboxes and an assistant. Outside services use Pramaan through one Go client module; the web app uses `@pramaan/sdk` through its authenticated backend.
@@ -43,7 +45,7 @@ If sign-in or a connection change is unconfirmed, check it before another attemp
 
 ## Development and checks
 
-Go 1.26 and Node 22 with pnpm 10.26.2:
+Go 1.26.9 and Node 26.12.0 with pnpm 10.26.2:
 
 ```sh
 go test ./...

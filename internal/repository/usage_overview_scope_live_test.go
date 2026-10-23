@@ -76,7 +76,7 @@ func TestLiveUsageOverviewCountsTheSelectedOrganization(t *testing.T) {
 	if xerr != nil {
 		t.Fatalf("GetEmailAccountCounts: %v", xerr)
 	}
-	campaigns, xerr := repo.GetCampaignCounts(ctx, orgID, time.Now().Add(-7*24*time.Hour), time.Now())
+	campaigns, xerr := repo.GetCampaignCounts(ctx, orgID, time.Now().Add(-7*24*time.Hour), time.Now().Add(time.Minute))
 	if xerr != nil {
 		t.Fatalf("GetCampaignCounts: %v", xerr)
 	}

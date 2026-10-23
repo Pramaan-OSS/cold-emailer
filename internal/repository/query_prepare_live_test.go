@@ -98,6 +98,12 @@ func extractQueries(t *testing.T, dir string) []extractedQuery {
 			t.Fatalf("read %s: %v", name, err)
 		}
 		for _, m := range rawLiteral.FindAllSubmatchIndex(src, -1) {
+			// A literal joined with + is only one piece of a runtime statement.
+			before := strings.TrimSpace(string(src[:m[0]]))
+			after := strings.TrimSpace(string(src[m[1]:]))
+			if strings.HasSuffix(before, "+") || strings.HasPrefix(after, "+") {
+				continue
+			}
 			sql := string(src[m[2]:m[3]])
 			if !hasParam.MatchString(sql) ||
 				!statementStart.MatchString(sql) ||
@@ -133,6 +139,9 @@ func TestLiveEveryQueryPrepares(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 
+	if _, err := conn.Exec(ctx, `CREATE TEMP TABLE org_import_send_origin (kind smallint NOT NULL, id uuid NOT NULL, PRIMARY KEY(kind,id))`); err != nil {
+		t.Fatal(err)
+	}
 	queries := extractQueries(t, ".")
 	if len(queries) < 100 {
 		t.Fatalf("only found %d statements to check; the extractor is broken", len(queries))

@@ -38,7 +38,7 @@ func TestLivePlacementAndRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 
 	repo := repository.NewWorkerRepository(pool)
 	svc := workerapp.NewAssignmentService(repo, nil, nil)

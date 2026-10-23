@@ -101,7 +101,15 @@ func TestLiveReleased265AttemptUpgradePreservesLegacyConsentAndFailedAttempts(t 
 	}
 	assertLedger()
 	version, dirty, err := m.Version()
-	if err != nil || dirty || version != 274 {
+	latest, latestErr := source.First()
+	for latestErr == nil {
+		next, nextErr := source.Next(latest)
+		if nextErr != nil {
+			break
+		}
+		latest = next
+	}
+	if err != nil || latestErr != nil || dirty || version != latest {
 		t.Fatal("final migration state", version, dirty, err)
 	}
 }

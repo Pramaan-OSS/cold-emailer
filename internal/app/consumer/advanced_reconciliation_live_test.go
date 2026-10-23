@@ -51,7 +51,12 @@ func TestLiveAdvancedBounceReconciliationRollbackAndReplayWithOneConnection(t *t
 	svc.(interface {
 		WireDispatcher(advanced.EventDispatcher)
 	}).WireDispatcher(dispatcher)
-	svc.WireNotifier(notification.NewService(repository.NewNotificationRepository(pool), nil))
+	notifier := notification.NewService(repository.NewNotificationRepository(pool), nil)
+	notifier.WireDelivery(nil, nil, nil, repository.NewOrganizationRepository(pool))
+	if _, err := h.Pool.Exec(t.Context(), `INSERT INTO organization_members (organization_id, user_id, role, accepted_at) VALUES ($1, $2, 'owner', NOW())`, f.org, f.user); err != nil {
+		t.Fatal(err)
+	}
+	svc.WireNotifier(notifier)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	request := &models.IngestDeliverabilityEventRequest{CampaignID: &f.campaign, TaskID: &task, ContactID: &f.contact, EventType: models.DeliverabilityEventBounce, Provider: "smtp_reject", RecipientEmail: "lead-" + f.contact.String()[:8] + "@test.local", Reason: "unknown recipient", IdempotencyKey: "refusal-" + task.String()}

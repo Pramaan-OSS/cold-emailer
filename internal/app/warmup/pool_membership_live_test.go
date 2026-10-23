@@ -53,6 +53,8 @@ func newPoolMailbox(t *testing.T, handle *db.DB, poolType string) *poolMailbox {
 	      VALUES ($1, $2, $3, $4, 'Pool', '', '', 'smtp_imap', 'active', 50, 600, 'UTC', $5)`,
 		f.account, f.user, f.org, "wp-"+f.account.String()[:8]+"@test.local", poolType)
 
+	exec(`UPDATE organizations SET risk_state = 'trusted' WHERE id = $1`, f.org)
+	exec(`UPDATE email_accounts SET test_mode = NULL WHERE id = $1`, f.account)
 	if poolType != "" {
 		exec(`INSERT INTO warmup_pool_participants (pool_id, email_account_id) VALUES ($1, $2)`, poolIDFor(t, poolType), f.account)
 	}

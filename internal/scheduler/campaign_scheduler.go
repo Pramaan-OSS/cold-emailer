@@ -904,7 +904,12 @@ func (s *schedulerService) placeCampaignSend(ctx context.Context, campaign *mode
 	// this mailbox's workday and its own lunch break, and layering the generic
 	// curve on top would drag sends away from the hours the customer chose.
 	if !preview && !selected.Behavior.Enabled {
-		candidateTime = applyDistributionCurve(candidateTime, campaignTZ)
+		// Optional pacing must not discard a slot that still fits before the
+		// campaign ends. The recipient-hour fallback keeps this candidate.
+		distributed := applyDistributionCurve(candidateTime, campaignTZ)
+		if campaign.EndDate == nil || !distributed.After(*campaign.EndDate) {
+			candidateTime = distributed
+		}
 	}
 
 	// STEP 13.5: Aim the send at the RECIPIENT's business hours. hardFloor

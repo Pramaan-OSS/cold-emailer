@@ -153,7 +153,7 @@ func TestSeedRich_FreshAndIdempotent(t *testing.T) {
 		{"8 email accounts (2 dev + 6 rich)", `SELECT COUNT(*) FROM email_accounts WHERE id::text LIKE '33333333-%'`, 8},
 		{"1 campaign", `SELECT COUNT(*) FROM campaigns WHERE id::text LIKE '44444444-%'`, 1},
 		{"2 sequences", `SELECT COUNT(*) FROM sequences WHERE id::text LIKE '55555555-%'`, 2},
-		{"10 contacts", `SELECT COUNT(*) FROM contacts WHERE id::text LIKE '66666666-%'`, 10},
+		{"13 contacts (3 baseline + 10 rich)", `SELECT COUNT(*) FROM contacts WHERE id::text LIKE '66666666-%'`, 13},
 		{"2 unsubscribed contacts", `SELECT COUNT(*) FROM contacts WHERE id::text LIKE '66666666-%' AND subscribed = false`, 2},
 		{"10 campaign leads", `SELECT COUNT(*) FROM campaign_leads cl JOIN contacts c ON c.id = cl.contact_id WHERE c.id::text LIKE '66666666-%'`, 10},
 		{"4 legacy unibox emails", `SELECT COUNT(*) FROM unibox_emails WHERE id::text LIKE '77777777-%'`, 4},

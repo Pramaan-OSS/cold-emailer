@@ -1,5 +1,5 @@
-pub mod secrets;
 pub mod parameters;
+pub mod secrets;
 
-pub use secrets::SecretsManagerClient;
 pub use parameters::ParameterStore;
+pub use secrets::SecretsManagerClient;
