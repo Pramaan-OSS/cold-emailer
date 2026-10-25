@@ -495,18 +495,22 @@ func TestLiveGapIsDrawnFromTheProfile(t *testing.T) {
 	b.HourlyLimitMin, b.HourlyLimitMax = 50, 50
 	f.setProfile(t, b)
 
-	// A send completed a moment ago, so the next slot is governed by the gap.
+	// Record the last send at whole-second precision, matching rebuilt schedule
+	// slots, so discarded fractional seconds cannot look like a short gap.
 	id := uuid.New()
-	if _, err := pool.Exec(context.Background(), `
+	var completedAt time.Time
+	if err := pool.QueryRow(context.Background(), `
 		INSERT INTO tasks (id, task_type, email_account_id, status, message_id, scheduled_at, completed_at)
-		VALUES ($1, 'campaign', $2, 'completed', '', NOW(), NOW())`, id, f.mailbox); err != nil {
+		VALUES ($1, 'campaign', $2, 'completed', '', date_trunc('second', NOW()), date_trunc('second', NOW())) RETURNING completed_at`, id, f.mailbox).Scan(&completedAt); err != nil {
 		t.Fatalf("seed completed task: %v", err)
 	}
 
 	at, _ := scheduleSlot(t, liveScheduler(t, handle, pool), f.campaign)
 	assertFuture(t, at)
 
-	gap := time.Until(at)
+	// Compare to the recorded send, not the later assertion clock: a valid
+	// minimum-jitter slot is exactly 40 minutes after this timestamp.
+	gap := at.Sub(completedAt)
 	if gap < 40*time.Minute {
 		t.Fatalf("next send is only %s away; a one-hour profile gap cannot produce that, so the fixed 600s min_wait_time is still in charge",
 			gap.Round(time.Second))

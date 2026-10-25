@@ -997,7 +997,7 @@ func (s *schedulerService) deferToNextDay(campaign *models.Campaign, preview boo
 		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, tz).AddDate(0, 0, 1)
 		return nextScheduleSlot(midnight, windows, tz)
 	}
-	t := nextScheduleSlot(s.campaignTime().Add(24*time.Hour), windows, tz)
+	t := nextScheduleSlot(s.campaignTime().In(tz).AddDate(0, 0, 1), windows, tz)
 	// Add a small jitter so deferred tasks don't all wake at the same instant.
 	return t.Add(time.Minute * time.Duration(randomJitter(0, 30)))
 }

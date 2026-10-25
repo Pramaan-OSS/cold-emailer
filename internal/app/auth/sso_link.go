@@ -108,7 +108,9 @@ func (s *authService) SSOLinkConfirm(ctx context.Context, data *SSOLinkData, ipa
 
 	// Consumed before anything is linked, so one password proves exactly one
 	// link and a retried request cannot mint a second session.
-	s.deleteSSOLinkPending(ctx, claims.SessionID)
+	if xerr := s.consumeSSOLinkPending(ctx, claims.SessionID, claims.Nonce, claims.UserID); xerr != nil {
+		return nil, xerr
+	}
 
 	identity := models.UserIdentity{
 		Provider: pend.Provider,
@@ -199,4 +201,22 @@ func (s *authService) deleteSSOLinkPending(ctx context.Context, sessionID uuid.U
 	if err := s.cache.Del(ctx, getSSOLinkKey(sessionID), getSSOLinkTriesKey(sessionID)).Err(); err != nil {
 		errs.CaptureException(err)
 	}
+}
+
+func (s *authService) consumeSSOLinkPending(ctx context.Context, sessionID uuid.UUID, nonce string, userID uuid.UUID) *errx.Error {
+	consumed, consumeErr := s.cache.GetDel(ctx, getSSOLinkKey(sessionID)).Bytes()
+	if consumeErr != nil {
+		if errors.Is(consumeErr, redis.Nil) {
+			return errx.ErrSSOLinkExpired
+		}
+		errs.CaptureException(consumeErr)
+		return errx.InternalError()
+	}
+	var taken models.SSOLinkPending
+	if json.Unmarshal(consumed, &taken) != nil || taken.Nonce != nonce || taken.UserID != userID {
+		return errx.ErrSSOLinkExpired
+	}
+	s.deleteSSOLinkPending(ctx, sessionID)
+
+	return nil
 }

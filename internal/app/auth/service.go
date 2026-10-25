@@ -107,7 +107,13 @@ type AuthService interface {
 	WireExternalIDTokens(apple, google IDTokenVerifier)
 
 	ResetPasswordStart(ctx context.Context, data *ResetPasswordStart, ipaddr string) *errx.Error
+	// ResetPasswordSession opens a reset session for an emailed link token,
+	// which the confirm step takes in place of the link token itself.
+	ResetPasswordSession(ctx context.Context, linkToken string) (*ResetPasswordSession, *errx.Error)
 	ResetPasswordConfirm(ctx context.Context, data *ResetPasswordConfirm, session, ipaddr string) *errx.Error
+	// WireCredentialRevokers attaches what ends a user's API credentials when
+	// a password change or reset asks for it.
+	WireCredentialRevokers(r ...UserCredentialRevoker)
 
 	// ChangePassword updates a logged-in user's password after verifying the
 	// current one. Every session ends with it and the caller gets the token
@@ -202,6 +208,8 @@ type authService struct {
 	// providers are the configured browser sign-in flows, keyed by identity
 	// provider ("oidc", "google", "apple"). Empty unless one is configured.
 	providers map[string]FederatedProvider
+	// credentialRevokers end a user's app grants and API keys on request.
+	credentialRevokers []UserCredentialRevoker
 
 	// policy and mailDelivers govern whether an emailed code gates a login and
 	// whether public signups are open. Defaults are set in NewService so a
@@ -211,6 +219,15 @@ type authService struct {
 }
 
 func (s *authService) WireTwoFA(t TwoFAChallenger) { s.twofa = t }
+
+// UserCredentialRevoker ends one kind of API credential a user holds or created.
+type UserCredentialRevoker interface {
+	RevokeUserCredentials(ctx context.Context, userID uuid.UUID) error
+}
+
+func (s *authService) WireCredentialRevokers(r ...UserCredentialRevoker) {
+	s.credentialRevokers = append(s.credentialRevokers, r...)
+}
 
 func (s *authService) WireDeployment(policy *config.AuthPolicy, mailDelivers bool) {
 	if policy != nil {

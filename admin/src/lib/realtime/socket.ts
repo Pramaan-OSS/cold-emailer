@@ -13,7 +13,22 @@
 import { Request } from "@/lib/api/client";
 import { API_URL } from "@/lib/env";
 
-export type RealtimeStatus = "connecting" | "connected" | "disconnected";
+export type RealtimeStatus = "connecting" | "connected" | "disconnected" | "refused";
+
+// Join refusals that reconnecting cannot change. The socket stops and the panel
+// says what the person has to do instead; a new start (sign-in) clears it.
+const REFUSAL_MESSAGES: Record<string, string> = {
+    admin_mfa_required:
+        "Live events need a session that verified a second factor. Turn on two-factor authentication or add a passkey under Settings > Security in the dashboard, then sign in here again.",
+    not_an_admin: "Live events are only for platform admins. Ask an existing admin to grant this account admin access, then sign in again.",
+    jwt_required: "Live events need a signed-in admin session. API keys and app tokens cannot open this feed. Sign in again.",
+};
+
+/** The plain-words explanation for a join refusal the socket stopped on. */
+export function refusalMessage(reason: string | null): string | null {
+    if (!reason) return null;
+    return REFUSAL_MESSAGES[reason] ?? null;
+}
 
 type EventCallback = (name: string, payload: Record<string, unknown>) => void;
 type StatusCallback = (status: RealtimeStatus) => void;
@@ -74,6 +89,7 @@ let reconnectAttempt = 0;
 let rejoinAttempt = 0;
 let lastRejoinAt = 0;
 let connecting = false; // guards the async URL fetch window before ws exists
+let refusal: string | null = null; // a terminal join refusal; blocks every reconnect
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let rejoinTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -167,7 +183,7 @@ function startHeartbeat() {
 }
 
 function scheduleReconnect() {
-    if (!started || reconnectTimer) return;
+    if (!started || reconnectTimer || refusal) return;
     const base = RECONNECT_SCHEDULE[Math.min(reconnectAttempt, RECONNECT_SCHEDULE.length - 1)];
     // ±25% jitter so clients don't reconnect in lockstep after an outage.
     const delay = Math.round(base * (0.75 + Math.random() * 0.5));
@@ -233,6 +249,16 @@ function handleMessage(raw: string) {
             }
 
             const response = reply.response ?? {};
+            if (response.reason && response.reason in REFUSAL_MESSAGES) {
+                refusal = response.reason;
+                teardownSocket();
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
+                setStatus("refused");
+                return;
+            }
             if (response.reason === "rate_limited") {
                 // Throttled: the socket is fine, so wait out the server's hint
                 // and rejoin instead of tearing the connection down.
@@ -297,7 +323,7 @@ function teardownSocket() {
 }
 
 async function connect(): Promise<void> {
-    if (!started || connecting) return;
+    if (!started || connecting || refusal) return;
     if (
         ws &&
         (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
@@ -368,7 +394,7 @@ async function connect(): Promise<void> {
 // instead of waiting out a backoff timer. Also clears a socket stuck
 // CONNECTING (suspended background tab) so a fresh one can open.
 function wake() {
-    if (!started) return;
+    if (!started || refusal) return;
     if (ws?.readyState === WebSocket.OPEN) return;
     teardownSocket();
     if (reconnectTimer) {
@@ -385,6 +411,7 @@ export function startRealtime() {
     if (started) return;
     started = true;
     epoch += 1;
+    refusal = null;
     reconnectAttempt = 0;
     rejoinAttempt = 0;
     lastRejoinAt = 0;
@@ -404,6 +431,7 @@ export function stopRealtime() {
         reconnectTimer = null;
     }
     teardownSocket();
+    refusal = null;
     setStatus("disconnected");
 }
 
@@ -425,4 +453,9 @@ export function onStatusChange(cb: StatusCallback): () => void {
 
 export function getStatus(): RealtimeStatus {
     return status;
+}
+
+/** The join refusal the socket stopped on, or null while it may reconnect. */
+export function getRefusal(): string | null {
+    return refusal;
 }

@@ -83,6 +83,7 @@ import (
 	"github.com/pramaan-oss/cold-email/internal/app/organization"
 	orgrisk "github.com/pramaan-oss/cold-email/internal/app/orgrisk"
 	"github.com/pramaan-oss/cold-email/internal/app/orgtransfer"
+	"github.com/pramaan-oss/cold-email/internal/app/owndomain"
 	"github.com/pramaan-oss/cold-email/internal/app/passkey"
 	"github.com/pramaan-oss/cold-email/internal/app/placement"
 	"github.com/pramaan-oss/cold-email/internal/app/ratelimit"
@@ -1160,6 +1161,8 @@ func main() {
 		formService.SetLinks(repository.NewFormLinkRepository(primaryDB))
 		formService.SetEvents(formEventRepository)
 		formService.SetDomains(organizationRepoForHandler)
+		ownDomains := owndomain.New(emailRepostory, organizationRepoForHandler)
+		formService.SetOwnDomains(ownDomains)
 		go jobs.NewFormEventsRetentionJob(formEventRepository).WireRetention(instanceSettings).Start(ctx, 12*time.Hour)
 		go jobs.NewFormsDomainSweep(organizationRepoForHandler).Start(ctx, time.Hour)
 		go jobs.NewContactMailHostSweep(contactRepoForHandler, cache, streamingPublisher).Start(ctx)
@@ -1176,6 +1179,7 @@ func main() {
 		leadSyncServiceForHandler = leadsync.NewService(leadSyncRepository, integrationServiceForHandler, contactService)
 
 		apiKeyService = apikey.NewService(cache, apiKeyRepository)
+		authService.WireCredentialRevokers(oauthService, apiKeyService)
 		// `coldemail auth login`: the browser approval mints an ordinary API key
 		// through the service above, so it has to be built after it.
 		cliAuthService = cliauth.NewService(repository.NewCLIAuthRepository(primaryDB.Pool), apiKeyService, organizationService, userService, organizationRepository)
@@ -1560,6 +1564,7 @@ func main() {
 		// Sending domains: tracking host per domain and the bare-domain redirect.
 		sendingDomainService = sendingdomain.NewService(repository.NewDomainRedirectRepository(primaryDB), emailRepostory, nil, domainProver)
 		sendingDomainService.WireAuditor(auditService)
+		sendingDomainService.WireOwnDomains(ownDomains)
 		go sendingDomainService.StartSweep(ctx)
 
 		mailhostDetector := mailhost.NewDetector(nil, nil, mailboximport.NewRedisDetectionCache(cache))

@@ -7,7 +7,7 @@ vi.mock("@/lib/api/client", () => ({
 import { Request } from "@/lib/api/client";
 vi.mock("@/lib/env", () => ({ API_URL: "https://api.example.test/root" }));
 
-import { startRealtime, stopRealtime, getStatus, onEvent } from "./socket";
+import { startRealtime, stopRealtime, getStatus, getRefusal, onEvent, refusalMessage } from "./socket";
 
 const TOPIC = "admin:platform";
 
@@ -152,6 +152,21 @@ describe("joining the admin channel", () => {
         expect(joins().length).toBeLessThanOrEqual(12);
         expect(sockets.length).toBeLessThanOrEqual(12);
     });
+
+    it.each(["admin_mfa_required", "not_an_admin", "jwt_required"])(
+        "stops for good on a %s refusal and explains it",
+        async (reason) => {
+            refuseJoin({ reason });
+            await tick(60_000);
+            window.dispatchEvent(new Event("focus"));
+            await tick(60_000);
+
+            expect(joins()).toHaveLength(1);
+            expect(sockets).toHaveLength(1);
+            expect(getStatus()).toBe("refused");
+            expect(refusalMessage(getRefusal())).toBeTruthy();
+        },
+    );
 
     it("gives up on a throttled join rather than retrying forever", async () => {
         for (let i = 0; i < 20; i++) {

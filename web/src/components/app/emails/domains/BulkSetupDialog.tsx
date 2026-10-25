@@ -16,7 +16,7 @@ import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TRACKING_LABEL, labelProblem, vendorForwards } from "@/components/app/emails/import/domainChoiceRules";
-import { commonWebsite, noDnsControl, redirectTargetProblem, trackingHostProblem, trackingState, vendorCanCname } from "./rules";
+import { OWN_DOMAIN_HINT, commonWebsite, noDnsControl, redirectTargetProblem, trackingHostProblem, trackingState, vendorCanCname } from "./rules";
 import { Chip } from "./parts";
 import { PerDomainList, type DomainOverride, type PerDomainRow } from "./PerDomainList";
 export interface BulkSetupIntent {
@@ -257,7 +257,7 @@ function Dialog({ intent, all, onClose, onOpenDomain, }: {
                             <Section on={redirectOn} onToggle={setRedirectOn} title="Redirect the root to your website" body="Someone who types one of these domains into a browser lands on your website instead of an empty page, so the domain reads as part of a real business.">
                                 <TextInput value={url} onChange={setUrl} placeholder="https://yourcompany.com" invalid={!!up && url.trim() !== ""} className="w-full"/>
                                 {up && url.trim() !== "" && <p className="text-[11px] text-rose-700">{up}</p>}
-                                {false}
+                                <p className="text-[11px] text-slate-500 leading-relaxed">{OWN_DOMAIN_HINT}</p>
                                 {keeping > 0 && (<p className="text-[11px] text-slate-500 leading-relaxed">
                                         {keeping.toLocaleString()} {keeping === 1 ? "domain already has its redirect" : "domains already have their redirect"} served
                                         from {"retired shared pool"} and {keeping === 1 ? "keeps it" : "keep it"} there. Pick a

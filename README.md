@@ -73,4 +73,4 @@ charge.
 
 ## Built on
 
-Built on [Warmbly / pirate-box](https://github.com/yogi100x/pirate-box), source commit `176d3c24486952a10cf07ec4fd3b9f9cf31c0bde`, originally Apache-2.0. Compatible fixes through source commit `51f76294a03a1a40f1caa3200fe5f930fecaa84e` (October 14, 2026) are adapted here; the [source update notes](docs/SOURCE-UPDATES.md) describe the selection. The original notice is preserved in `LICENSE-ORIGINAL`; frontend notices are preserved in their `NOTICE` files. This template is AGPL-3.0.
+Built on [Warmbly](https://github.com/warmbly/warmbly), source commit `176d3c24486952a10cf07ec4fd3b9f9cf31c0bde`, originally Apache-2.0. Compatible fixes through source commit `ec3e1df78827d5ff51015394be3a16f8ece8dab0` (October 24, 2026) are adapted here; the [source update notes](docs/SOURCE-UPDATES.md) describe the selection. The original notice is preserved in `LICENSE-ORIGINAL`; frontend notices are preserved in their `NOTICE` files. This template is AGPL-3.0.

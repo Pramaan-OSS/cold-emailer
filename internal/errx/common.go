@@ -280,3 +280,16 @@ func StorageLimitReached(usedBytes, limitBytes, addingBytes int64) *Error {
 		fmt.Sprintf("Storage limit reached: %d MB of %d MB used, %d MB to add. Remove attachments or images, or upgrade your plan.",
 			usedBytes/mb, limitBytes/mb, addingBytes/mb))
 }
+
+var (
+	ErrSessionEnded = NewWithIdentifier(Unauthorized, "session_ended", "Your session has ended. Sign in again to continue.")
+	// Account and workspace standing. Each names what the person can do next.
+	ErrAccountSuspended = NewWithIdentifier(Forbidden, "account_suspended",
+		"This account is suspended and cannot sign in. If you think this is a mistake, contact support or the administrator of this server.")
+	ErrAccountSendingSuspended = NewWithIdentifier(Forbidden, "account_sending_suspended",
+		"This account is not allowed to send email. If you think this is a mistake, contact support or the administrator of this server.")
+	ErrAccountWorkspaceCreateSuspended = NewWithIdentifier(Forbidden, "account_workspace_create_suspended",
+		"This account is not allowed to create new workspaces. You can still join a workspace you are invited to. If you think this is a mistake, contact support or the administrator of this server.")
+	ErrWorkspaceSendingSuspended = NewWithIdentifier(Forbidden, "workspace_sending_suspended",
+		"Sending is paused for this workspace while it is under review. Contact support to resolve the review; nothing else in the workspace is affected.")
+)

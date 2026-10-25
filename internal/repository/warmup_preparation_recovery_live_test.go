@@ -25,6 +25,7 @@ func preparationRecoveryFixture(t *testing.T) (*warmupFixture, *taskRepository, 
 		{`INSERT INTO workers(id) VALUES($1)`, []any{worker}},
 		{`UPDATE email_accounts SET worker_id=$1,test_mode='legacy' WHERE id=$2`, []any{worker, f.sender}},
 		{`INSERT INTO warmup_tasks(task_id,target_account_id,lineage_version) VALUES($1,$2,1)`, []any{f.task, f.recipient}},
+		{`INSERT INTO warmup_pool_participants(pool_id,email_account_id) SELECT wp.id,ea.id FROM warmup_pools wp CROSS JOIN email_accounts ea WHERE wp.pool_type='free' AND ea.id IN($1,$2) ON CONFLICT DO NOTHING`, []any{f.sender, f.recipient}},
 		{`UPDATE tasks SET status='active' WHERE id=$1`, []any{f.task}},
 	}
 	for _, q := range queries {

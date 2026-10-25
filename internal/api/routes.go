@@ -57,6 +57,7 @@ func Run(
 
 	// Registered before every route, including the public ones below, so the
 	// headers reach the OAuth bouncer pages and /public as well as the API.
+	r.Use(middleware.RequestHeaders())
 	r.Use(middleware.SecurityHeaders())
 
 	r.Use(middleware.RequestIDMiddleware())
@@ -219,6 +220,7 @@ func Run(
 			"Content-Type",
 			"Authorization",
 			"Idempotency-Key",
+			"Pramaan-Plan",
 			"X-Request-Id",
 		},
 		ExposeHeaders: []string{
@@ -270,7 +272,7 @@ func Run(
 
 	r.Use(cors.New(corsConfig))
 	r.Use(middleware.DashboardOriginMiddleware())
-	r.Use(middleware.QueryValidation())
+	r.Use(middleware.QueryValidation(), middleware.SingleValuedQuery())
 
 	// Limit request body size to 10MB to prevent OOM. The contact file uploads
 	// apply their own, larger cap in the handler before reading.
@@ -348,6 +350,7 @@ func Run(
 		auth.POST("/refresh", h.RefreshToken)
 		auth.POST("/reset-password", h.ResetPasswordStart)
 		auth.POST("/reset-password/confirm", h.ResetPasswordConfirm)
+		auth.POST("/reset-password/session", h.ResetPasswordSession)
 
 		// Passkey (WebAuthn) sign-in is discoverable/usernameless: a passkey
 		// is already strong auth, so it's a single step with no email OTP.
@@ -1799,6 +1802,8 @@ func Run(
 
 		// Send outcome loop and task queues.
 		adminRoutes.GET("/sends/in-flight", middleware.RequireAdminPermission(models.AdminPermViewCampaigns), h.AdminInFlightSends)
+		adminRoutes.GET("/sends/holds", middleware.RequireAdminPermission(models.AdminPermViewCampaigns), h.AdminSendHolds)
+		adminRoutes.POST("/sends/holds/:id/resolve", middleware.RequireAdminPermission(models.AdminPermStopCampaigns), h.AdminResolveSendHold)
 		adminRoutes.GET("/tasks/dead-letters", middleware.RequireAdminPermission(models.AdminPermViewCampaigns), h.AdminListDeadLetters)
 		adminRoutes.POST("/tasks/dead-letters/:id/replay", middleware.RequireAdminPermission(models.AdminPermStopCampaigns), h.AdminReplayDeadLetter)
 		adminRoutes.GET("/tasks/failures", middleware.RequireAdminPermission(models.AdminPermViewCampaigns), h.AdminRecentTaskFailures)

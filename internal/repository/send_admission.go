@@ -106,6 +106,9 @@ func sendAuthority(ctx context.Context, tx pgx.Tx, task, mailbox, org, worker uu
 }
 
 func lockSend(ctx context.Context, tx pgx.Tx, task, mailbox uuid.UUID) error {
+	if err := lockWarmupParticipation(ctx, tx, task, mailbox); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,268))`, task.String()); err != nil {
 		return err
 	}
@@ -524,6 +527,13 @@ func checkWarmupRecipientReservation(ctx context.Context, tx pgx.Tx, task, sende
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,273))`, recipient.String()); err != nil {
 		return err
+	}
+	var receiving bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM email_accounts ea JOIN warmup_pool_participants wpp ON wpp.email_account_id=ea.id WHERE ea.id=$1 AND `+partnerEligibleSQL+`)`, recipient).Scan(&receiving); err != nil {
+		return err
+	}
+	if !receiving {
+		return ErrSendAdmissionDenied
 	}
 	share := 100
 	if pool != "premium" {

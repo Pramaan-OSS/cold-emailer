@@ -1,6 +1,9 @@
 package auth
 
-import "github.com/pramaan-oss/cold-email/internal/models"
+import (
+	"github.com/pramaan-oss/cold-email/internal/models"
+	"time"
+)
 
 type AuthData struct {
 	Email         string `json:"email"`
@@ -36,14 +39,32 @@ type ResetPasswordStart struct {
 }
 
 type ResetPasswordConfirm struct {
-	Session       string `json:"session"`
-	Password      string `json:"password"`
-	BotCheckToken string `json:"bot_check_token"`
+	// Session is the reset session POST /auth/reset-password/session returned,
+	// or the emailed link token itself from a client that predates that step.
+	Session  string `json:"session"`
+	Password string `json:"password"`
+	// RevokeAPICredentials also ends the user's app authorizations and the API keys they created.
+	RevokeAPICredentials bool   `json:"revoke_api_credentials,omitempty"`
+	BotCheckToken        string `json:"bot_check_token"`
+}
+
+// ResetPasswordExchange is the emailed link token, presented in a body so the
+// reset session it opens never travels in a URL.
+type ResetPasswordExchange struct {
+	Token string `json:"token"`
+}
+
+// ResetPasswordSession is the reset session a link opens, for the confirm step.
+type ResetPasswordSession struct {
+	Session   string    `json:"session"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 type ChangePassword struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+	// RevokeAPICredentials also ends the user's app authorizations and the API keys they created.
+	RevokeAPICredentials bool `json:"revoke_api_credentials,omitempty"`
 }
 
 // SSOLinkData is what POST /auth/sso/link takes: the challenge a federated

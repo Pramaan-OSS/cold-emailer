@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -40,9 +41,7 @@ func (d *Detector) fetchConfig(ctx context.Context, u, domain string) *Settings 
 // document, or nil when it does not offer both over TLS.
 func parseClientConfig(body []byte, domain string) *Settings {
 	var cfg clientConfig
-	dec := xml.NewDecoder(bytes.NewReader(body))
-	dec.Strict = false
-	if err := dec.Decode(&cfg); err != nil {
+	if err := decodeUntrustedXML(body, &cfg); err != nil {
 		return nil
 	}
 	imap, okI := pick(cfg.Provider.Incoming, "imap", domain, imapRank)
@@ -51,6 +50,32 @@ func parseClientConfig(body []byte, domain string) *Settings {
 		return nil
 	}
 	return &Settings{SMTP: smtp, IMAP: imap}
+}
+
+var errXMLRefused = errors.New("xml document refused")
+
+// decodeUntrustedXML decodes a bounded, well-formed document that carries no DTD or other directive.
+func decodeUntrustedXML(body []byte, v any) error {
+	if len(body) > maxBody {
+		return errXMLRefused
+	}
+	scan := xml.NewDecoder(bytes.NewReader(body))
+	scan.Strict = true
+	for {
+		tok, err := scan.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if _, ok := tok.(xml.Directive); ok {
+			return errXMLRefused
+		}
+	}
+	dec := xml.NewDecoder(bytes.NewReader(body))
+	dec.Strict = true
+	return dec.Decode(v)
 }
 
 // imapRank prefers implicit TLS on 993.

@@ -264,7 +264,7 @@ func TestLiveWarmupTargetIsCappedByReachablePartners(t *testing.T) {
 			id, f.user, other, "ramp-p-"+id.String()[:8]+"@test.local")
 		ids = append(ids, id)
 	}
-	exec(`UPDATE email_accounts SET test_mode = NULL WHERE organization_id = $1`, other)
+	exec(`UPDATE email_accounts SET test_mode = NULL, warmup=NOW()-INTERVAL '2 days' WHERE organization_id = $1`, other)
 	for _, id := range ids {
 		exec(`INSERT INTO warmup_pool_participants (pool_id, email_account_id, participant_role, health_state)
 		      VALUES ($1, $2, 'sender_receiver', 'healthy')`, models.WarmupPoolPremiumID, id)

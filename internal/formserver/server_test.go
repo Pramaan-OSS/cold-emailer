@@ -443,3 +443,23 @@ func TestFormShellTokenEscaping(t *testing.T) {
 		t.Fatal("token must be escaped")
 	}
 }
+
+func TestFormServerRefusesRepeatedParametersAndRenderTokens(t *testing.T) {
+	_, srv, r := newFixture(t, 0)
+	token := mintFor(srv, "pubtest123")
+
+	if w := get(r, "/api/forms/pubtest123?ref=a&ref=b", token); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "duplicate_query_parameter") {
+		t.Fatalf("repeated query status %d: %s", w.Code, w.Body.String())
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/forms/pubtest123", nil)
+	req.Header.Add("X-ColdEmail-Render", token)
+	req.Header.Add("X-ColdEmail-Render", mintFor(srv, "otherform"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "duplicate_header") {
+		t.Fatalf("repeated render token status %d: %s", w.Code, w.Body.String())
+	}
+	if w := get(r, "/api/forms/pubtest123?ref=a", token); w.Code != http.StatusOK {
+		t.Fatalf("single query status %d: %s", w.Code, w.Body.String())
+	}
+}

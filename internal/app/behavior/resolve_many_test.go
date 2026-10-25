@@ -127,3 +127,8 @@ func BenchmarkResolveManyTimezone(b *testing.B) {
 		})
 	}
 }
+
+// Today's plan may be persisted; answer that dependency in the batch fixture too.
+func (r *batchBehaviorRepo) EnsurePlan(_ context.Context, plan models.DailyPlan) (*models.DailyPlan, error) {
+	return &plan, nil
+}
