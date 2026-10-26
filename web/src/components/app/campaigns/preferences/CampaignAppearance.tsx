@@ -193,7 +193,7 @@ export function DeliverabilitySection({
             {newCampaign.utm_tracking && !newCampaign.text_only && (
                 <UTMFields campaign={newCampaign} setNewCampaign={setNewCampaign} />
             )}
-            <p className="text-sm">One-click unsubscribe headers are unavailable. Campaigns include a plain unsubscribe link when opt-out is enabled.</p>
+            <SettingRow title="One-click unsubscribe headers" description="Not yet live-verified. Some sending paths refuse these headers; a refusal stops sending and is shown. The body unsubscribe link remains." control={<Toggle id="campaign-pref-unsubscribe-header" value={newCampaign.unsubscribe_header} onChange={v => setNewCampaign(bef => ({...bef, unsubscribe_header:v}))} />} />
             <SettingRow
                 title="Opt-out line"
                 description={

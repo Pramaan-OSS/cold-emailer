@@ -11,13 +11,23 @@ schema_checker = Path(os.environ.get("PRAMAAN_SCHEMA_CHECKER", root / ".data" / 
 if not os.environ.get("PRAMAAN_SCHEMA_CHECKER"):
  schema_checker.parent.mkdir(exist_ok=True)
  subprocess.run(["go", "build", "-o", str(schema_checker), "./cmd/schema-check"], cwd=root, check=True)
-state={'generation_calls':0, 'generation_mode':'complete', 'unavailable':[], 'inboxes':[{'address':'cold-email-review@example.test','ref':'inbox-local-review','displayName':'Cold Email review','status':'active'}],'domains':[], 'registrations':[], 'domain_creates':0, 'domain_mode':'available', 'domain_name':'synthetic-outreach.example', 'plans':{}, 'jobs':{}, 'outcome_runs':0, 'outcome_estimates':0,'remote_connectors':[], 'remote_calls':0, 'remote_mode':'unknown', 'enterprise_connections':[], 'enterprise_starts':{}, 'enterprise_used':[], 'enterprise_exchanges':0, 'connections':[{'app':'connected-crm','status':'active'}]}
+state={'header_path':'full','adopt_mode':'success','adopt_calls':[], 'company_refs':[], 'signing_policies':{}, 'generation_calls':0, 'generation_mode':'complete', 'unavailable':[], 'inboxes':[{'address':'cold-email-review@example.test','ref':'inbox-local-review','displayName':'Cold Email review','status':'active'}],'domains':[], 'registrations':[], 'domain_creates':0, 'domain_mode':'available', 'domain_name':'synthetic-outreach.example', 'plans':{}, 'jobs':{}, 'outcome_runs':0, 'outcome_estimates':0,'remote_connectors':[], 'remote_calls':0, 'remote_mode':'unknown', 'enterprise_connections':[], 'enterprise_starts':{}, 'enterprise_used':[], 'enterprise_exchanges':0, 'connections':[{'app':'connected-crm','status':'active'}]}
 class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
  def reply(self, body, status=200):
   self.send_response(status);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(json.dumps(body).encode())
  def do_GET(self):
-  detail={'id':'lead.find','description':'Find company leads','available':True,'effect_class':'read_only','mode':'async','personal_data':True,'steps':[]}
+  if self.path=='/fixture/adopt':return self.reply({'calls':state['adopt_calls'],'mode':state['adopt_mode']})
+  if self.path.startswith('/v1/companies/mail/'):
+   ref=self.path.split('/')[-1]
+   if state['adopt_mode']=='unavailable':return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+   if ref not in state['company_refs']:return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+   return self.reply({'companyRef':ref,'status':'connected'})
+  if self.path=='/fixture/image.png':
+   import base64
+   data=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1sAAAAASUVORK5CYII=')
+   self.send_response(200);self.send_header('Content-Type','image/png');self.end_headers();return self.wfile.write(data)
+  detail={'id':'lead.find' ,'description':'Find company leads','available':True,'effect_class':'read_only','mode':'async','personal_data':True,'steps':[]}
   if self.path=='/fixture/generation':return self.reply({'calls':state['generation_calls']})
   if self.path=='/v1/outcomes':return self.reply({'results':[detail]})
   if self.path=='/v1/outcomes/lead.find':return self.reply(detail)
@@ -30,10 +40,54 @@ class Handler(BaseHTTPRequestHandler):
   if self.path=='/fixture/domains':return self.reply({'creates':state['domain_creates'],'registrations':state['registrations']})
   if self.path=='/fixture/outcomes':return self.reply({'runs':state['outcome_runs'],'estimates':state['outcome_estimates']})
   return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+ def do_DELETE(self):
+  if self.path.startswith('/v1/companies/mail/'):
+   if state['adopt_mode']=='unavailable':return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+   state['company_refs']=[ref for ref in state['company_refs'] if ref!=self.path.split('/')[-1]];return self.reply({'revoked':True})
+  return self.reply({'error':{'code':'not_found','effect':'none'}},404)
  def do_POST(self):
   cap=self.path.split('/')[-1];data=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or '{}');out={}
   if self.path.startswith('/v1/capabilities/') and not self.path.endswith('/estimate') and not self.headers.get('Idempotency-Key','').strip():
    return self.reply({'error':{'code':'invalid_request','effect':'none','message':'Idempotency-Key header is required for this capability.'}},400)
+  if self.path=='/fixture/header-path':
+   state['header_path']=data.get('path','full');return self.reply({'set':True})
+  if self.path=='/fixture/company-authorize':
+   state['company_refs'].append('company_office_fixture');return self.reply({'companyRef':'company_office_fixture'})
+  if self.path=='/fixture/adopt-mode':
+   state['adopt_mode']=data.get('mode','success');return self.reply({'set':True})
+  adoption_ids=('email.message.append','email.account.protocol-diagnose','email.folders.list','email.directory.tenant.resolve','web.image.read','workflow.webhook.signing-policy.create','workflow.webhook.signing-policy.delete','workflow.webhook.signed-call','ai.judgment.calibrated')
+  if cap in adoption_ids or self.path.startswith('/v1/companies/mail/') or (cap in ('email.message.send','email.send') and data.get('headers')):
+   state['adopt_calls'].append({'path':self.path,'input':data})
+   mode=state['adopt_mode']
+   if mode=='unavailable':return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+   if mode=='refused':return self.reply({'error':{'code':'invalid_request','effect':'none','message':'The selected path refused these headers.' if data.get('headers') else 'Request refused.'}},400)
+   if mode=='uncertain':return self.reply({'error':{'code':'upstream_unavailable','effect':'unknown'}},502)
+   if self.path=='/v1/companies/mail/connect':
+    if data.get('kind')=='office':return self.reply({'authorizationUrl':'https://api.pramaan.dev/connect/company/start/synthetic'})
+    if data.get('kind')=='workspace' and not data.get('mailbox'):return self.reply({'setupUrl':'https://api.pramaan.dev/connect/company/setup','proofName':'_proof.example.test','proofValue':'synthetic-proof'})
+    ref='company_fixture';state['company_refs'].append(ref);return self.reply({'companyRef':ref})
+   if cap=='email.message.append':
+    import base64
+    try:valid=data.get('app') in ('gmail','outlook') and data.get('ref')=='folder_fixture' and len(base64.b64decode(data.get('content',''),validate=True))<=10*1024*1024
+    except Exception:valid=False
+    if not valid:return self.reply({'error':{'code':'invalid_request','effect':'none'}},400)
+    return self.reply({'status':'saved','ref':'message_saved_fixture'})
+   if cap=='email.account.protocol-diagnose':return self.reply({'mailboxType':'label_based' if data.get('app')=='gmail' else 'folder_based','protocol':'mailbox_api','health':'connected','features':['send','folders','raw_append'],'sendingLimits':[]})
+   if cap=='email.folders.list':return self.reply({'results':[{'ref':'folder_fixture','name':'Sent','system':True}]})
+   if cap=='email.directory.tenant.resolve':return self.reply({'domain':data.get('domain'),'discovered':True,'ref':'tenant_fixture'})
+   if cap=='web.image.read':
+    if data.get('consent') is not True:return self.reply({'error':{'code':'invalid_request','effect':'none'}},400)
+    return self.reply({'fileId':'file_image_fixture','url':f'http://127.0.0.1:{self.server.server_port}/fixture/image.png','contentType':'image/png','sizeBytes':68,'expiresAt':'2026-10-27T12:00:00Z'})
+   if cap=='workflow.webhook.signing-policy.create':
+    ref='policy_'+uuid.uuid4().hex;state['signing_policies'][ref]=True;return self.reply({'ref':ref,'secret':'whsec_'+('A'*43)+'='})
+   if cap=='workflow.webhook.signing-policy.delete':
+    state['signing_policies'].pop(data.get('ref'),None);return self.reply({'deleted':True})
+   if cap=='workflow.webhook.signed-call':
+    if data.get('signaturePolicyRef') not in state['signing_policies']:return self.reply({'error':{'code':'not_found','effect':'none'}},404)
+    job=uuid.uuid4().hex;state['jobs'][job]={'job_id':job,'status':'done','result':{'eventId':data['eventId'],'status':'accepted','receivedAt':'2026-10-26T12:00:00Z'}};return self.reply({'job_id':job,'status':'running'},202)
+   if cap=='ai.judgment.calibrated':return self.reply({'results':[{'optionId':o['id'],'probability':1/len(data['options'])} for o in data['options']]})
+   if cap in ('email.message.send','email.send') and state['header_path']=='diagnostic-only' and any(k.lower().startswith('list-') for k in data.get('headers',{})):return self.reply({'error':{'code':'invalid_request','effect':'none','message':'The selected path accepts only diagnostic X- headers; List-Unsubscribe headers were refused.'}},400)
+   if cap in ('email.message.send','email.send'):return self.reply({'ref':'message_fixture','status':'sent','messageId':'<fixture@example.test>'})
   if cap=='billing.price.get':return self.reply({'unitPrice':2000,'currency':'usd','renewalIntervalUnit':'month','renewalIntervalCount':1,'category':'subscription','scheme':'standard'})
   if cap=='payments.checkout.create':return self.reply({'ref':'checkout_fixture','checkoutUrl':'https://checkout.example.test/pay'})
   if cap=='payments.checkout.get':

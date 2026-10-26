@@ -373,7 +373,7 @@ function QuestionForm({
                     className="w-full"
                 />
                 <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
-                    One plain statement about the reply, read literally: no double negatives, one judgment per question. Calibrated judgment is currently unavailable; these custom questions stay off.
+                    One plain statement about the reply, read literally: no double negatives, one judgment per question. Judgments are model estimates, not measured accuracy on your data. Not yet live-verified.
                 </p>
             </div>
 

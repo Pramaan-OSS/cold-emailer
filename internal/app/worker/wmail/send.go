@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pramaan-oss/cold-email/internal/config"
 	"github.com/pramaan-oss/cold-email/internal/errx"
 	"github.com/pramaan-oss/cold-email/internal/models"
 	"github.com/pramaan-oss/cold-email/internal/pramaan"
@@ -116,6 +117,7 @@ func (w *WMail) Send(ctx context.Context, r *SendRequest) *SendResult {
 		in.References = strings.Fields(r.References)
 	}
 	if r.UnsubscribeURL != "" {
+		in.Headers = map[string]string{"List-Unsubscribe": "<" + r.UnsubscribeURL + ">", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
 		if !strings.Contains(in.Text, r.UnsubscribeURL) {
 			in.Text += "\n\nTo stop these emails: " + r.UnsubscribeURL
 		}
@@ -127,6 +129,12 @@ func (w *WMail) Send(ctx context.Context, r *SendRequest) *SendResult {
 		in.InReplyTo = parent.MessageID
 	}
 	if r.IsWarmup {
+		if r.WarmupToken != "" {
+			if in.Headers == nil {
+				in.Headers = map[string]string{}
+			}
+			in.Headers[config.WarmupVerifyHeader] = r.WarmupToken
+		}
 		in.HTML = ""
 		in.AutoSubmitted = "auto-generated"
 		if in.InReplyTo != "" {

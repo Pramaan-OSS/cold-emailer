@@ -3,6 +3,7 @@ package pramaan
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 )
 
@@ -13,18 +14,19 @@ type MailAttachment struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 type MailRequest struct {
-	From          string           `json:"from"`
-	To            []string         `json:"to"`
-	Cc            []string         `json:"cc,omitempty"`
-	Bcc           []string         `json:"bcc,omitempty"`
-	ReplyTo       string           `json:"replyTo,omitempty"`
-	Subject       string           `json:"subject"`
-	Text          string           `json:"text,omitempty"`
-	HTML          string           `json:"html,omitempty"`
-	InReplyTo     string           `json:"inReplyTo,omitempty"`
-	References    []string         `json:"references,omitempty"`
-	AutoSubmitted string           `json:"autoSubmitted,omitempty"`
-	Attachments   []MailAttachment `json:"attachments,omitempty"`
+	From          string            `json:"from"`
+	To            []string          `json:"to"`
+	Cc            []string          `json:"cc,omitempty"`
+	Bcc           []string          `json:"bcc,omitempty"`
+	ReplyTo       string            `json:"replyTo,omitempty"`
+	Subject       string            `json:"subject"`
+	Text          string            `json:"text,omitempty"`
+	HTML          string            `json:"html,omitempty"`
+	InReplyTo     string            `json:"inReplyTo,omitempty"`
+	References    []string          `json:"references,omitempty"`
+	AutoSubmitted string            `json:"autoSubmitted,omitempty"`
+	Attachments   []MailAttachment  `json:"attachments,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
 }
 
 var ErrSendUncertain = errors.New("Send outcome is unknown. Check the message before trying again.")
@@ -61,7 +63,13 @@ func (s MailService) Send(ctx context.Context, r MailRequest, key string) (MailR
 			return out, errors.New("This recipient has opted out of email.")
 		}
 	}
+	if err := ValidateMailHeaders(r.Headers); err != nil {
+		return out, err
+	}
 	if r.InReplyTo != "" {
+		if len(r.Headers) > 0 {
+			return out, errors.New("Custom headers are unavailable on replies. Send a new message or remove the header option explicitly.")
+		}
 		in := map[string]any{"inbox": r.From, "messageId": r.InReplyTo, "to": r.To, "subject": r.Subject, "text": r.Text, "html": r.HTML}
 		if len(r.Cc) > 0 {
 			in["cc"] = r.Cc
@@ -87,7 +95,11 @@ func (s MailService) Send(ctx context.Context, r MailRequest, key string) (MailR
 
 func checkedSend(out MailResult, err error) (MailResult, error) {
 	if err != nil {
-		if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrNotConfigured) {
+		if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrNotConfigured) || errors.Is(err, ErrMailHeadersRefused) {
+			return out, err
+		}
+		var refusal *HTTPError
+		if errors.As(err, &refusal) && refusal.Effect == "none" {
 			return out, err
 		}
 		return out, ErrSendUncertain
@@ -96,4 +108,53 @@ func checkedSend(out MailResult, err error) (MailResult, error) {
 		return out, ErrSendUncertain
 	}
 	return out, nil
+}
+
+// ValidateMailHeaders refuses unsupported fields before dispatch. The selected path
+// may further refuse List-* headers; callers never strip them or resend silently.
+func ValidateMailHeaders(headers map[string]string) error {
+	diagnostic := 0
+	seen := map[string]bool{}
+	unsubscribe, post := "", ""
+	for name, value := range headers {
+		lower := strings.ToLower(name)
+		if seen[lower] {
+			return errors.New("Duplicate message header.")
+		}
+		seen[lower] = true
+		for _, c := range name {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+				return errors.New("Invalid message header name.")
+			}
+		}
+		if value == "" {
+			return errors.New("Message header value is empty.")
+		}
+		for _, c := range value {
+			if c < 32 || c > 126 {
+				return errors.New("Message headers must contain printable ASCII only.")
+			}
+		}
+		switch lower {
+		case "list-unsubscribe":
+			unsubscribe = value
+		case "list-unsubscribe-post":
+			post = value
+		default:
+			if !strings.HasPrefix(lower, "x-") || len(lower) <= 2 {
+				return errors.New("This message header is unsupported.")
+			}
+			diagnostic++
+		}
+	}
+	if diagnostic > 1 {
+		return errors.New("Use only one diagnostic message header.")
+	}
+	if post != "" {
+		u, e := url.Parse(strings.TrimSuffix(strings.TrimPrefix(unsubscribe, "<"), ">"))
+		if post != "List-Unsubscribe=One-Click" || e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return errors.New("One-click unsubscribe needs an HTTPS unsubscribe link.")
+		}
+	}
+	return nil
 }

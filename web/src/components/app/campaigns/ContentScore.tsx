@@ -221,6 +221,7 @@ function JudgmentBlock({ judgment }: { judgment: CopyJudgment }) {
     const unsure = judgment.confidence < 0.7;
     return (
         <div className="mt-2 rounded-md border border-slate-200 bg-slate-50/60 p-2">
+            <p className="text-[11px] text-slate-500">Model estimates; accuracy on your data is unmeasured. Not yet live-verified.</p>
             <div className="flex items-center gap-1.5">
                 <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-medium">Reads as</span>
                 {unsure && <span className="text-[10px] text-slate-400">low confidence</span>}

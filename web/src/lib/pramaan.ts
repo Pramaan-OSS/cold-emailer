@@ -9,9 +9,10 @@ export async function capability<T = Record<string, unknown>>(id: string, input:
   const client = createPramaanClient({ apiKey: session, baseUrl: `${API_BASE_URL}/auth/pramaan`, maxRetries: 0 });
   try { return await client.call(id, input, { idempotencyKey: key }) as T; }
   catch (error) {
+    if (error instanceof PramaanError && error.reason === "headers_refused") throw new Error("The selected sending path refused these headers. Choose a compatible mailbox or explicitly turn off one-click headers; the body link remains.");
     if (error instanceof PramaanError && error.reason === "reply_incomplete") throw new Error("The reply is incomplete. Retry with a larger reply limit.");
     if (error instanceof PramaanError && error.reason === "reply_limit") throw new Error("The reply limit is too small. Increase maxTokens in the request settings before trying again.");
-    if (error instanceof PramaanError && (error.code === 'upstream_unavailable' || error.status === 501)) throw new Error(error.effect === 'none' ? 'This feature is not available yet.' : 'This feature is not available yet. Its result may be unknown; check before retrying.');
+    if (error instanceof PramaanError && (error.code === 'upstream_unavailable' || error.code === 'not_found' || error.status === 501)) throw new Error(error.effect === 'none' ? 'This feature is not available yet.' : 'This feature is not available yet. Its result may be unknown; check before retrying.');
     throw new Error('The action could not complete. Check your connection and action fields, then try again.');
   }
 
@@ -238,4 +239,14 @@ function toOutcomeRun(body: unknown): OutcomeRun {
       })),
     },
   };
+}
+
+// Company setup uses platform routes that are separate from capability execution.
+export async function companyMail(action: 'connect'|'status'|'revoke'|'enroll', input: Record<string, unknown>, key: string = crypto.randomUUID()): Promise<Record<string, unknown>> {
+ const session=(await ensureValidToken()).access_token;
+ if(!session) throw new Error('Sign in first.');
+ const response=await fetch(`${API_BASE_URL}/auth/pramaan/companies/mail/${action}`,{method:'POST',headers:{Authorization:`Bearer ${session}`,'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(input)});
+ const body=await response.json();
+ if(!response.ok) throw new Error(body.error?.code==='not_found'||body.error?.code==='upstream_unavailable'?'Company connection is not available yet.':body.error?.code==='forbidden'?'A workspace owner or admin must approve this connection.':'Company connection could not complete. Check its status before retrying.');
+ return body;
 }

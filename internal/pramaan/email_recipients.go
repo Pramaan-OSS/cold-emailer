@@ -59,6 +59,22 @@ func validateMailInput(id string, input any) error {
 		}
 		return nil
 	}
+	if raw, ok := obj["headers"]; ok {
+		headers := map[string]string{}
+		encoded, _ := json.Marshal(raw)
+		if json.Unmarshal(encoded, &headers) != nil {
+			return errors.New("Message headers must be text values.")
+		}
+		if err := ValidateMailHeaders(headers); err != nil {
+			return err
+		}
+		if len(headers) > 0 && id == "email.send" && obj["sender"] != "domain" {
+			return errors.New("Custom headers require an owned-domain sender.")
+		}
+		if len(headers) > 0 && id == "email.message.reply" {
+			return errors.New("Custom reply headers are unavailable.")
+		}
+	}
 	for _, key := range []string{"to", "cc", "bcc", "replyTo"} {
 		value, exists := obj[key]
 		if !exists || value == nil {

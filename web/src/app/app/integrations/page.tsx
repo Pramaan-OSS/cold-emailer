@@ -1,3 +1,5 @@
+import CompanyMailConnect from '@/components/app/emails/CompanyMailConnect';
+import MailboxTools from '@/components/app/emails/MailboxTools';
 import useAuthConfig from '@/lib/api/hooks/auth/useAuthConfig';
 import DomainPurchase from "@/components/app/emails/domains/DomainPurchase";
 import listIntegrationConnections from '@/lib/api/client/app/integrations/listConnections';
@@ -181,7 +183,7 @@ export default function IntegrationsPage() {
         <label className="field">Address name<input className="in" value={username} onChange={e => changed(() => setUsername(e.target.value))} placeholder="hello" /></label>
         <p>Pramaan supplies the domain for this mailbox.</p><button className="btn" disabled={busy || !username.trim()}>Create mailbox</button>{!username.trim() && <small>Enter an address name first.</small>}
       </form>
-      <div className="card"><h2>Use an existing mailbox</h2><p>Connect a mailbox you already own.</p><p data-testid="mailbox-access-notice">{connectionAccessNotice(undefined,'mailbox')}</p><button className="btn" disabled={busy || mailboxSubmitted} onClick={() => void connectMailbox()}>Connect your mailbox</button>
+      <CompanyMailConnect/><MailboxTools/><div className="card"><h2>Use an existing mailbox</h2><p>Connect a mailbox you already own.</p><p data-testid="mailbox-access-notice">{connectionAccessNotice(undefined,'mailbox')}</p><button className="btn" disabled={busy || mailboxSubmitted} onClick={() => void connectMailbox()}>Connect your mailbox</button>
         <button className="btn" disabled={busy} onClick={() => void connectMailbox(true)}>Check your connection</button>
         <button className="btn" disabled={busy} onClick={() => void run('email.inboxes.list', { limit: 50 }, out => setRows(rowList(out)))}>Show your mailboxes</button>
         {rows.map((row, i) => <div className="tile" key={i}>{String(row.address ?? '')}</div>)}

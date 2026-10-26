@@ -18,7 +18,7 @@ func (h *Handler) PramaanCall(c *gin.Context) {
 		c.JSON(403, gin.H{"error": gin.H{"code": "forbidden", "message": "Choose a workspace first."}})
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<20)
 	var in map[string]any
 	if json.NewDecoder(c.Request.Body).Decode(&in) != nil {
 		c.JSON(400, gin.H{"error": gin.H{"code": "invalid_request", "message": "The request could not be read."}})
@@ -31,7 +31,7 @@ func (h *Handler) PramaanCall(c *gin.Context) {
 	}
 	var out any
 	var e error
-	if pramaan.DomainCapability(c.Param("capability")) {
+	if pramaan.DomainCapability(c.Param("capability")) || pramaan.AdoptionCapability(c.Param("capability")) {
 		member := middleware.GetMember(c)
 		if member == nil && h.OrganizationService != nil {
 			userID, err := middleware.GetUserUUID(c)
@@ -43,7 +43,11 @@ func (h *Handler) PramaanCall(c *gin.Context) {
 		if member != nil {
 			role = member.Role
 		}
-		out, e = h.PramaanGateway.DomainCall(c.Request.Context(), org.String(), middleware.GetUserID(c), role, c.Param("capability"), in, key)
+		if pramaan.AdoptionCapability(c.Param("capability")) {
+			out, e = h.PramaanGateway.AdoptionCall(c.Request.Context(), org.String(), role, c.Param("capability"), in, key)
+		} else {
+			out, e = h.PramaanGateway.DomainCall(c.Request.Context(), org.String(), middleware.GetUserID(c), role, c.Param("capability"), in, key)
+		}
 	} else {
 		out, e = h.PramaanGateway.Call(c.Request.Context(), org.String(), c.Param("capability"), in, key)
 	}
@@ -65,6 +69,10 @@ func (h *Handler) PramaanCall(c *gin.Context) {
 		}
 		if errors.Is(e, pramaan.ErrDomainUnavailable) {
 			status, code, effect = 502, "upstream_unavailable", "none"
+		}
+		if errors.Is(e, pramaan.ErrMailHeadersRefused) {
+			status, code, effect = 400, "invalid_request", "none"
+			reason = "headers_refused"
 		}
 		if e == pramaan.ErrUnavailable {
 			status, code = 501, "not_found"

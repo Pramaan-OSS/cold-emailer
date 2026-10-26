@@ -1,7 +1,7 @@
 // Remote content in received mail stays blocked until the reader asks for it,
 // so a sender's pixel cannot tell when or where the message was opened.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { hasRemoteContent } from "@/lib/email/body";
@@ -29,11 +29,12 @@ describe("EmailBody remote content", () => {
         expect(loadButton()).toBeInTheDocument();
     });
 
-    it("keeps external images blocked when import is unavailable", () => {
+    it("keeps external images blocked without consent", () => {
+        vi.spyOn(window, "confirm").mockReturnValue(false);
         const { container } = render(<EmailBody html={TRACKED} blockRemote />);
         fireEvent.click(loadButton()!);
         expect(srcDoc(container)).toContain("img-src data: 'self'");
-        expect(loadButton()).toBeDisabled();
+        expect(loadButton()).toBeEnabled();
         expect(srcDoc(container)).not.toContain("https:;");
     });
 
@@ -72,7 +73,7 @@ describe("EmailBody remote content", () => {
         expect(out).toContain("img-src data: 'self'");
         expect(out).toContain("script-src 'none'");
         expect(out).toContain("base-uri 'none'");
-        expect(loadButton()).toBeDisabled();
+        expect(loadButton()).toBeEnabled();
         expect(out).not.toContain("https:;");
     });
 

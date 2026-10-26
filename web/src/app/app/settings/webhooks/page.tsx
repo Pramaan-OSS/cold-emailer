@@ -344,7 +344,7 @@ function CreateModal({ catalog, onClose }: { catalog: WebhookEventDescriptor[]; 
 
                 {created ? (
                     <SecretReveal
-                        title={`${created.url} is ready`}
+                        title={`${created.url} created — save the secret before testing`}
                         secret={created.secret}
                         onDone={onClose}
                     />
@@ -432,7 +432,7 @@ function SecretReveal({ title, secret, onDone }: { title: string; secret: string
             </div>
             <p className="text-[12px] text-slate-500 leading-relaxed">
                 Save the signing secret now. For security it is shown only once and cannot be retrieved later (you can rotate it
-                if you lose it). Use it to verify the HMAC signature on every delivery.
+                if you lose it). Save it at your receiver to verify Standard Webhooks HMAC-SHA256 headers (webhook-id, webhook-timestamp, webhook-signature). Not yet live-verified.
             </p>
             <div>
                 <Label>Signing secret</Label>
@@ -447,7 +447,7 @@ function SecretReveal({ title, secret, onDone }: { title: string; secret: string
                 </div>
             </div>
             <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-500 leading-relaxed">
-                Verify your endpoint by replying with a 2xx to its first delivery. Send a test event from the endpoint's
+                Save the secret at your receiver before sending anything. Verify your endpoint by replying with a 2xx to a test event from the endpoint's
                 Overview tab once it is created.
             </div>
             <div className="pt-1">

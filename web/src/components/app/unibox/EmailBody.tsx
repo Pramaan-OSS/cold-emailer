@@ -17,6 +17,7 @@
 // pixel cannot learn when, where or in what client a message was read.
 
 import React from "react";
+import { capability } from "@/lib/pramaan";
 import { ImageOffIcon, MoreHorizontalIcon } from "lucide-react";
 import { hasRemoteContent, plainToDisplayHtml } from "@/lib/email/body";
 import { isSafeLinkHref } from "@/lib/safeUrl";
@@ -177,6 +178,10 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
     const frameRef = React.useRef<HTMLIFrameElement>(null);
     const viewportRef = React.useRef<HTMLDivElement>(null);
     const [showQuoted, setShowQuoted] = React.useState(false);
+ const [imported,setImported]=React.useState<{body:string;html:string}>();
+ const [imageMessage,setImageMessage]=React.useState('');
+ const [loadingImages,setLoadingImages]=React.useState(false);
+ const imageLock=React.useRef(false);
 
     // The message body, before the shell. Split from srcDoc so toggling the
     // quote does not re-run the plain-text conversion.
@@ -190,7 +195,23 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
 
     // Consent belongs to the body it was given for, so a different message is
     // blocked from its very first render.
-    const quotes = React.useMemo(() => prepareQuotes(body), [body]);
+    React.useEffect(() => { setImageMessage(''); }, [body]);
+ const displayedBody=imported?.body===body?imported.html:body;
+ const quotes = React.useMemo(() => prepareQuotes(displayedBody), [displayedBody]);
+ async function loadImages(){
+  if(imageLock.current)return;
+  if(!window.confirm('Import remote images through Pramaan? The sender may learn that these images were requested. Only JPEG, PNG, GIF and WebP images up to 10 MiB are supported.'))return;
+  imageLock.current=true;setLoadingImages(true);setImageMessage('');
+  const requestedBody=body;
+  try{
+   const doc=new DOMParser().parseFromString(body,'text/html');
+   const images=Array.from(doc.querySelectorAll('img[src]')).filter(img=>/^https?:/i.test(img.getAttribute('src')??''));
+   if(images.length>20)throw new Error('Import at most 20 images per message.');
+   const importedURLs=new Map<string,string>();
+   for(const img of images){const url=img.getAttribute('src')!;let data=importedURLs.get(url);if(!data){const out=await capability<{dataURL:string}>('web.image.read',{url,consent:true});data=out.dataURL;if(!/^data:image\/(jpeg|png|gif|webp);base64,/.test(data))throw new Error('The imported image is invalid.');importedURLs.set(url,data);}img.removeAttribute('srcset');img.setAttribute('src',data);}
+   setImported({body:requestedBody,html:doc.documentElement.outerHTML});setImageMessage('Images imported. Remote fonts, background images and other media remain blocked. Not yet live-verified.');
+  }catch(e){setImageMessage(e instanceof Error?e.message:'Image import failed.');}finally{imageLock.current=false;setLoadingImages(false);}
+ }
     const hasQuote = quotes.hasQuote;
     const remote = React.useMemo(() => hasRemoteContent(body), [body]);
     const csp = CSP_BLOCKED;
@@ -286,17 +307,18 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
                 <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11.5px] text-slate-500">
                     <ImageOffIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                     <span className="flex-1 min-w-0">
-                        External images are unavailable. Inline and workspace images remain visible.
+                        {imported?.body === body ? "Imported images are stored copies. Other remote media remain blocked." : "External images are blocked until you allow import. Not yet live-verified."}
                     </span>
                     <button
                         type="button"
-                        disabled title="External image import is unavailable."
+                        disabled={loadingImages || imported?.body === body} onClick={() => void loadImages()} title="Allow importing public images through Pramaan."
                         className="shrink-0 font-medium text-sky-700 hover:text-sky-800"
                     >
-                        Load images
+                        {imported?.body === body ? "Images imported" : "Load images"}
                     </button>
                 </div>
             )}
+            {imageMessage && <p role="status">{imageMessage}</p>}
             <div className={cn("min-w-0", darkTheme && designed && "theme-light rounded-md bg-white p-3")}>
                 <div ref={viewportRef} className="relative w-full overflow-hidden" style={{ height: "80px" }}>
                     <iframe

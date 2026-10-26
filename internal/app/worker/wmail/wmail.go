@@ -2,6 +2,7 @@ package wmail
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -145,6 +146,12 @@ func NewWMail(
 	}
 
 	mail.Broker = brokerClient
+	if data.SmtpImap != nil && data.SmtpImap.Credentials != nil && data.SmtpImap.Credentials.SMTP != nil {
+		svc := data.SmtpImap.Credentials.SMTP
+		if svc.Host == "broker.invalid" && strings.HasPrefix(svc.Username, "company:") {
+			mail.Broker = pramaan.CompanyMailbox{Client: brokerClient, CompanyRef: strings.TrimPrefix(svc.Username, "company:"), Mailbox: data.Email}
+		}
+	}
 	ready = true
 	return mail, nil
 }

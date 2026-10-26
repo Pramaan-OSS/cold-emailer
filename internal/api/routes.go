@@ -409,6 +409,7 @@ func Run(
 	enterpriseRoutes.GET("/choices", h.EnterpriseChoices)
 	enterpriseRoutes.POST("/link/begin", h.EnterpriseLinkBegin)
 
+	protectedAuth.POST("/pramaan/companies/mail/:action", m.RequireOrganization(), m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations), h.PramaanCompany)
 	protectedAuth.POST("/pramaan/v1/capabilities/:capability", m.RequireOrganization(), m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations), h.PramaanCall)
 	outcomeRoutes := protectedAuth.Group("/pramaan/v1", m.RequireOrganization(), m.RequireAccess(models.PermManageSettings, models.APIPermIntegrations))
 	outcomeRoutes.POST("/capabilities/:capability/estimate", h.PramaanLeadSearchEstimate)

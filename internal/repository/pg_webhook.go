@@ -596,7 +596,7 @@ func (r *webhookRepository) MarkDelivered(ctx context.Context, id uuid.UUID, res
 	_, err := r.db.Exec(ctx, `
 		UPDATE webhook_deliveries
 		SET status = 'delivered',
-		    response_status = $1,
+		    response_status = NULLIF($1, 0),
 		    error_reason = NULL,
 		    updated_at = NOW()
 		WHERE id = $2

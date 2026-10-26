@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pramaan-oss/cold-email/internal/pramaan"
 	"github.com/rs/zerolog/log"
 
 	"github.com/pramaan-oss/cold-email/internal/infrastructure/cache"
@@ -131,6 +132,7 @@ type Service interface {
 }
 
 type service struct {
+	broker       pramaan.Caller
 	repo         repository.WebhookRepository
 	now          func() time.Time
 	sink         DispatchSink
@@ -296,10 +298,19 @@ func (s *service) CreateEndpoint(ctx context.Context, orgID uuid.UUID, in Endpoi
 	if err := s.enforceAppDomain(ctx, in.OAuthApplicationID, in.URL); err != nil {
 		return nil, err
 	}
-	secret, err := generateSecret()
+	broker := s.broker
+	if broker == nil {
+		var err error
+		broker, err = pramaan.FromEnv()
+		if err != nil {
+			return nil, err
+		}
+	}
+	policy, err := pramaan.CreateSigningPolicy(ctx, broker, "Customer webhook", uuid.NewString())
 	if err != nil {
 		return nil, err
 	}
+	secret := "pramaan-policy:" + policy.Ref
 	token, err := generateChallenge()
 	if err != nil {
 		return nil, err
@@ -317,12 +328,11 @@ func (s *service) CreateEndpoint(ctx context.Context, orgID uuid.UUID, in Endpoi
 	if err := s.repo.CreateEndpoint(ctx, endpoint, secret, token); err != nil {
 		return nil, err
 	}
-	// Kick off ownership verification immediately so the endpoint can go live as
-	// soon as it echoes the challenge (or, for org endpoints, simply accepts it).
-	s.enqueueChallenge(ctx, endpoint, token)
+	// The receiver must save its one-time secret before any delivery.
+	// The owner explicitly sends a verification event after saving it.
 	return &models.WebhookEndpointWithSecret{
 		WebhookEndpoint: *endpoint,
-		Secret:          secret,
+		Secret:          policy.Secret,
 	}, nil
 }
 
@@ -370,18 +380,74 @@ func (s *service) UpdateEndpoint(ctx context.Context, orgID, endpointID uuid.UUI
 }
 
 func (s *service) DeleteEndpoint(ctx context.Context, orgID, endpointID uuid.UUID) error {
+	endpoint, err := s.repo.GetEndpoint(ctx, orgID, endpointID)
+	if err != nil {
+		return err
+	}
+	if endpoint == nil {
+		return repository.ErrWebhookEndpointNotFound
+	}
+	saved, err := s.repo.GetEndpointSecret(ctx, endpointID)
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(saved, "pramaan-policy:") {
+		broker := s.broker
+		if broker == nil {
+			broker, err = pramaan.FromEnv()
+			if err != nil {
+				return err
+			}
+		}
+		if err = pramaan.DeleteSigningPolicy(ctx, broker, strings.TrimPrefix(saved, "pramaan-policy:"), "webhook-delete-"+endpointID.String()); err != nil {
+			return err
+		}
+	}
 	return s.repo.DeleteEndpoint(ctx, orgID, endpointID)
 }
 
 func (s *service) RotateSecret(ctx context.Context, orgID, endpointID uuid.UUID) (string, error) {
-	secret, err := generateSecret()
+	endpoint, err := s.repo.GetEndpoint(ctx, orgID, endpointID)
 	if err != nil {
 		return "", err
 	}
-	if err := s.repo.RotateSecret(ctx, orgID, endpointID, secret); err != nil {
+	if endpoint == nil {
+		return "", repository.ErrWebhookEndpointNotFound
+	}
+	saved, err := s.repo.GetEndpointSecret(ctx, endpointID)
+	if err != nil {
 		return "", err
 	}
-	return secret, nil
+	broker := s.broker
+	if broker == nil {
+		broker, err = pramaan.FromEnv()
+		if err != nil {
+			return "", err
+		}
+	}
+	// Pause ordinary delivery until the receiver has saved the new secret and
+	// explicitly requested a verification event.
+	token, err := generateChallenge()
+	if err != nil {
+		return "", err
+	}
+	if err = s.repo.ArmVerification(ctx, orgID, endpointID, token); err != nil {
+		return "", err
+	}
+	// Revoke the previous policy first. A failed rotation leaves delivery refused.
+	if strings.HasPrefix(saved, "pramaan-policy:") {
+		if err = pramaan.DeleteSigningPolicy(ctx, broker, strings.TrimPrefix(saved, "pramaan-policy:"), uuid.NewString()); err != nil {
+			return "", err
+		}
+	}
+	policy, err := pramaan.CreateSigningPolicy(ctx, broker, "Customer webhook", uuid.NewString())
+	if err != nil {
+		return "", err
+	}
+	if err = s.repo.RotateSecret(ctx, orgID, endpointID, "pramaan-policy:"+policy.Ref); err != nil {
+		return "", err
+	}
+	return policy.Secret, nil
 }
 
 func (s *service) GetEndpoint(ctx context.Context, orgID, endpointID uuid.UUID) (*models.WebhookEndpoint, error) {
@@ -399,6 +465,9 @@ func (s *service) VerifyEndpoint(ctx context.Context, orgID, endpointID uuid.UUI
 	}
 	if endpoint == nil {
 		return repository.ErrWebhookEndpointNotFound
+	}
+	if endpoint.OAuthApplicationID != nil {
+		return invalidInput("App-scoped ownership verification is not available yet: signed delivery does not return a challenge echo.")
 	}
 	token, err := generateChallenge()
 	if err != nil {
@@ -638,6 +707,7 @@ func FormatSignatureHeader(timestamp time.Time, signature string) string {
 // run concurrently — ClaimDueDeliveries uses SKIP LOCKED to prevent
 // duplicate dispatch.
 type DeliveryWorker struct {
+	broker           pramaan.Caller
 	repo             repository.WebhookRepository
 	httpClient       *http.Client
 	cache            *cache.Cache
@@ -768,7 +838,49 @@ func (w *DeliveryWorker) rateLimited(ctx context.Context, endpointID uuid.UUID) 
 }
 
 func (w *DeliveryWorker) deliver(ctx context.Context, d *models.WebhookDelivery) {
-	w.fail(ctx, d, nil, "Signed webhook delivery is unavailable. Connect an app action in Connections instead.", "")
+	endpoint, err := w.repo.GetEndpoint(ctx, d.OrganizationID, d.EndpointID)
+	if err != nil || endpoint == nil || !endpoint.Enabled {
+		_ = w.repo.MarkAbandoned(ctx, d.ID, "Endpoint is unavailable or disabled.")
+		return
+	}
+	if d.EventType != string(models.WebhookEventEndpointTest) && endpoint.VerifiedAt == nil {
+		_ = w.repo.MarkAbandoned(ctx, d.ID, "Save the signing secret and verify this endpoint before delivery.")
+		return
+	}
+	saved, err := w.repo.GetEndpointSecret(ctx, d.EndpointID)
+	if err != nil || !strings.HasPrefix(saved, "pramaan-policy:") {
+		_ = w.repo.MarkAbandoned(ctx, d.ID, "Rotate the endpoint secret to enable platform signing.")
+		return
+	}
+	broker := w.broker
+	if broker == nil {
+		broker, err = pramaan.FromEnv()
+		if err != nil {
+			_ = w.repo.MarkAbandoned(ctx, d.ID, err.Error())
+			return
+		}
+	}
+	var payload map[string]any
+	decoder := json.NewDecoder(strings.NewReader(string(d.Payload)))
+	decoder.UseNumber()
+	if decoder.Decode(&payload) != nil {
+		_ = w.repo.MarkAbandoned(ctx, d.ID, "Invalid webhook payload.")
+		return
+	}
+	// Same policy/event id always means the same URL and payload. The platform
+	// deduplicates reclaims after a worker crash; unknown delivery is never retried.
+	err = pramaan.SignedWebhook(ctx, broker, strings.TrimPrefix(saved, "pramaan-policy:"), endpoint.URL, d.EventID.String(), payload)
+	if err != nil {
+		_ = w.repo.MarkAbandoned(ctx, d.ID, err.Error()+" Delivery was not automatically repeated.")
+		return
+	}
+	// The contract confirms acceptance but does not return the exact HTTP code.
+	_ = w.repo.MarkDelivered(ctx, d.ID, 0)
+	_ = w.repo.UpdateEndpointHealthOnSuccess(ctx, d.EndpointID)
+	// Acceptance does not prove signature verification or challenge echo.
+	if d.EventType == string(models.WebhookEventEndpointTest) && endpoint.OAuthApplicationID == nil {
+		_ = w.repo.MarkVerified(ctx, endpoint.ID, false)
+	}
 }
 
 // settleVerification marks an endpoint verified after a successful challenge. A

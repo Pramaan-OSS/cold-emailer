@@ -17,6 +17,8 @@ import (
 
 const DefaultBaseURL = "https://api.pramaan.dev"
 
+var ErrMailHeadersRefused = errors.New("The selected sending path refused these headers. Use a compatible mailbox or explicitly turn off one-click headers; the body unsubscribe link remains.")
+
 var ErrUnavailable = errors.New("This feature is not available yet.")
 var ErrIdempotencyRequired = errors.New("The request was refused: an Idempotency-Key header is required.")
 
@@ -178,6 +180,7 @@ func (c *Client) request(ctx context.Context, method, path string, b []byte, o c
 		return 0, nil, errors.New("The response could not be read.")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+
 		if resp.StatusCode == 400 {
 			var refusal struct {
 				Error struct{ Code, Message string }
@@ -185,6 +188,9 @@ func (c *Client) request(ctx context.Context, method, path string, b []byte, o c
 			if json.Unmarshal(data, &refusal) == nil && refusal.Error.Code == "invalid_request" && strings.Contains(strings.ToLower(refusal.Error.Message), "idempotency-key") && strings.Contains(strings.ToLower(refusal.Error.Message), "required") {
 				return resp.StatusCode, nil, ErrIdempotencyRequired
 			}
+		}
+		if resp.StatusCode == 400 && (strings.HasSuffix(path, "/email.message.send") || strings.HasSuffix(path, "/email.send")) && (strings.Contains(strings.ToLower(string(data)), "header") || strings.Contains(strings.ToLower(string(data)), "list-unsubscribe")) {
+			return resp.StatusCode, nil, ErrMailHeadersRefused
 		}
 		if resp.StatusCode == 400 && (strings.Contains(path, "/capabilities/llm.chat") || strings.Contains(path, "/capabilities/llm.complete")) {
 			var wire struct {

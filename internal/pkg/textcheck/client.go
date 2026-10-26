@@ -8,15 +8,16 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/pramaan-oss/cold-email/internal/pramaan"
 )
 
-// Calibrated judgments are unavailable until the broker has that contract.
+// Typed judgments use the shared capability transport; no outside model key is accepted.
 const defaultEndpoint = ""
-const Model = ""
+const Model = "platform-judgment-v1"
 
 // QuestionType names the three primitives used here. The API also has a
 // bounding-box type, which has nothing to do with email.
@@ -97,8 +98,8 @@ type Answer struct {
 	Confidence    float64            `json:"confidence"`
 }
 
-// Response is one call's worth of answers. Output tokens are free; input is
-// billed, and is recorded so a workspace can see what the feature costs.
+// Response preserves the existing answer shape. The capability returns no token
+// usage; these compatibility fields do not establish a price or a usage count.
 type Response struct {
 	Model   string            `json:"model"`
 	Answers map[string]Answer `json:"answers"`
@@ -110,6 +111,7 @@ type Response struct {
 
 // Client calls the TextCheck API. Zero value is not usable; use NewClient.
 type Client struct {
+	broker   pramaan.Caller
 	endpoint string
 	apiKey   string
 	http     *http.Client
@@ -239,7 +241,83 @@ func truncate(s string, n int) string {
 // Ask sends one state and every question in one call against the pinned
 // model, and retries only the two statuses that mean "try again later".
 func (c *Client) Ask(ctx context.Context, state any, questions map[string]Question) (*Response, error) {
-	return nil, pramaan.ErrUnavailable
+	broker := c.broker
+	if broker == nil {
+		var err error
+		broker, err = pramaan.FromEnv()
+		if err != nil {
+			return nil, err
+		}
+	}
+	facts, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	response := &Response{Model: Model, Answers: map[string]Answer{}}
+	names := make([]string, 0, len(questions))
+	for name := range questions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		q := questions[name]
+		var labels, descriptions []string
+		switch q.Type {
+		case QuestionNoul:
+			labels = []string{"false", "true"}
+			descriptions = []string{"The statement is false.", "The statement is true."}
+		case QuestionChoice:
+			choices, ok := q.Criteria.(map[string]string)
+			if !ok {
+				return nil, fmt.Errorf("Invalid judgment choices.")
+			}
+			for label := range choices {
+				labels = append(labels, label)
+			}
+			sort.Strings(labels)
+			for _, label := range labels {
+				descriptions = append(descriptions, choices[label])
+			}
+		case QuestionScore:
+			levels, ok := q.Criteria.([]string)
+			if !ok {
+				return nil, fmt.Errorf("Invalid judgment levels.")
+			}
+			descriptions = levels
+			for i := range levels {
+				labels = append(labels, strconv.Itoa(i))
+			}
+		default:
+			return nil, fmt.Errorf("Unsupported judgment question type.")
+		}
+		options := make([]pramaan.JudgmentOption, len(labels))
+		for i := range labels {
+			options[i] = pramaan.JudgmentOption{ID: fmt.Sprintf("option%d", i), Description: descriptions[i]}
+		}
+		values, err := pramaan.Judgment(ctx, broker, q.Instructions, string(facts), options)
+		if err != nil {
+			return nil, err
+		}
+		answer := Answer{Type: q.Type, Probabilities: map[string]float64{}, Legend: map[string]string{}}
+		highest := -1.0
+		for i, v := range values {
+			answer.Probabilities[labels[i]] = v.Probability
+			answer.Legend[labels[i]] = descriptions[i]
+			if v.Probability > highest {
+				highest = v.Probability
+				answer.Choice = labels[i]
+				answer.Confidence = v.Probability
+			}
+			if q.Type == QuestionNoul && labels[i] == "true" {
+				answer.Noul = v.Probability
+			}
+			if q.Type == QuestionScore {
+				answer.Score += float64(i) * v.Probability
+			}
+		}
+		response.Answers[name] = answer
+	}
+	return response, nil
 }
 
 func (c *Client) once(ctx context.Context, payload []byte) (*Response, error) {
